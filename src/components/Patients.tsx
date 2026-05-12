@@ -38,7 +38,11 @@ export default function Patients() {
   }, []);
 
   const fetchHistory = (patientId: string) => {
-    const q = query(collection(db, `patients/${patientId}/visits`), orderBy('date', 'desc'));
+    const q = query(
+      collection(db, `patients/${patientId}/visits`), 
+      orderBy('date', 'desc'),
+      limit(50)
+    );
     const unsub = onSnapshot(q, (snap) => {
       setPatientHistory(snap.docs.map(d => d.data() as PatientVisit));
     }, (err) => handleFirestoreError(err, OperationType.LIST, `patients/${patientId}/visits`));

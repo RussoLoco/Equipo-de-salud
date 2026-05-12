@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { useAuth } from './AuthProvider';
@@ -17,7 +17,7 @@ export default function UserManagement() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    const q = query(collection(db, 'users'));
+    const q = query(collection(db, 'users'), limit(100));
     const unsub = onSnapshot(q, (snapshot) => {
       setUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
       setLoading(false);

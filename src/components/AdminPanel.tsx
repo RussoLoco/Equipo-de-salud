@@ -52,19 +52,15 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
-    const unsubInv = onSnapshot(collection(db, 'inventory'), (snap) => {
-      setTotalInventario(snap.size);
-    });
-    const unsubOrd = onSnapshot(collection(db, 'orders'), (snap) => {
-      setTotalPedidos(snap.size);
-    });
-    const unsubUploads = onSnapshot(query(collection(db, 'uploads_history'), orderBy('timestamp', 'desc')), (snap) => {
+    // Initial stats fetch
+    refreshStats();
+
+    const qUploads = query(collection(db, 'uploads_history'), orderBy('timestamp', 'desc'), limit(50));
+    const unsubUploads = onSnapshot(qUploads, (snap) => {
       setUploadHistory(snap.docs.map(d => d.data() as UploadRecord));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'uploads_history'));
     
     return () => {
-      unsubInv();
-      unsubOrd();
       unsubUploads();
     };
   }, []);

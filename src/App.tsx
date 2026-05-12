@@ -102,9 +102,9 @@ function AppContent() {
                 <div className="absolute h-4 w-1 bg-white rounded-full"></div>
               </div>
             </div>
-            <div className="hidden xs:block">
-              <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none uppercase">Equipo de<span className="text-blue-600">salud</span></h1>
-              <p className="text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores</p>
+            <div className="flex flex-col">
+              <h1 className="text-base sm:text-lg font-black text-slate-800 tracking-tight leading-none uppercase">Equipo De <span className="text-blue-600">Salud</span></h1>
+              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores</p>
             </div>
           </div>
         </div>
