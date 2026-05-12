@@ -79,7 +79,8 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
   }, [editingMed]);
 
   useEffect(() => {
-    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'));
+    // Cost Optimization: Limit initial fetch and order by drug name
+    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'), limit(300));
     const unsubInv = onSnapshot(qInv, (snapshot) => {
       setMedicines(snapshot.docs.map(doc => doc.data() as Medicine));
       setLoading(false);
@@ -364,109 +365,168 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
       </div>
 
       {/* Inventory Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden overflow-x-auto">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-slate-50 border-b border-slate-200">
-              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-1/4">Medicamento / Acción</th>
-              <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Stock</th>
-              <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-32">Vencimiento</th>
-              <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Tipo</th>
-              <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-32">Ubicación</th>
-              <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {filteredMedicines.map((med) => (
-              <tr key={med.drugId} className="group hover:bg-slate-50/50 transition-colors">
-                <td className="px-6 py-5">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
-                      <Package className="h-5 w-5" />
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto hidden md:block">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-1/4">Medicamento / Acción</th>
+                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Stock</th>
+                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-32">Vencimiento</th>
+                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Tipo</th>
+                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-32">Ubicación</th>
+                <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredMedicines.map((med) => (
+                <tr key={med.drugId} className="group hover:bg-slate-50/50 transition-colors">
+                  <td className="px-6 py-5">
+                    <div className="flex items-center gap-4">
+                      <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
+                        <Package className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800">
+                          {med.drug} 
+                          {med.brandName && <span className="text-blue-500 ml-1">({med.brandName})</span>}
+                          {med.dosage && <span className="text-slate-400 font-medium ml-1">[{med.dosage}]</span>}
+                        </p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
+                          #{med.drugId} • {med.therapeuticAction || 'Sin Acción'} • {med.presentation}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-bold text-slate-800">
-                        {med.drug} 
-                        {med.brandName && <span className="text-blue-500 ml-1">({med.brandName})</span>}
-                        {med.dosage && <span className="text-slate-400 font-medium ml-1">[{med.dosage}]</span>}
-                      </p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">
-                        #{med.drugId} • {med.therapeuticAction || 'Sin Acción'} • {med.presentation}
-                      </p>
+                  </td>
+                  <td className="px-4 py-5 text-center">
+                    <div className={cn(
+                      "inline-flex flex-col items-center justify-center px-4 py-1.5 rounded-xl border",
+                      (med.stock === '0' || !med.stock) ? "bg-red-50 text-red-600 border-red-100" : 
+                      "bg-blue-50 text-blue-600 border-blue-100"
+                    )}>
+                      <span className="text-xs font-black">{med.stock || '-'}</span>
                     </div>
-                  </div>
-                </td>
-                <td className="px-4 py-5 text-center">
-                  <div className={cn(
-                    "inline-flex flex-col items-center justify-center px-4 py-1.5 rounded-xl border",
-                    (med.stock === '0' || !med.stock) ? "bg-red-50 text-red-600 border-red-100" : 
-                    "bg-blue-50 text-blue-600 border-blue-100"
-                  )}>
-                    <span className="text-xs font-black">{med.stock || '-'}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-5 text-center">
-                  <div className="flex items-center justify-center gap-2 text-slate-500">
-                    <Calendar className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold tracking-tight">{med.expirationDate || '---'}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-5 text-center">
-                  <span className={cn(
-                    "text-[9px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest",
-                    med.category === 'Niño' ? "bg-pink-100 text-pink-600" : "bg-slate-100 text-slate-600"
-                  )}>
-                    {med.category === 'Niño' ? 'Pediátrico' : 'Adulto'}
-                  </span>
-                </td>
-                <td className="px-4 py-5 text-center">
-                  <div className="flex items-center justify-center gap-2 text-slate-400">
-                    <Layers className="h-3.5 w-3.5" />
-                    <span className="text-[10px] font-bold tracking-tight italic">{med.location || 'Vacío'}</span>
-                  </div>
-                </td>
-                <td className="px-6 py-5 text-right">
-                  <div className="flex items-center justify-end gap-3">
-                    <div className="flex flex-col items-end">
-                      <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1 italic">Añadir a</span>
-                      <button 
-                        onClick={() => addToCart(med)}
-                        disabled={med.stock === '0' || !med.stock}
-                        className={cn(
-                          "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 flex items-center gap-2",
-                          cart.find(c => c.drugId === med.drugId) 
-                            ? "bg-blue-600 text-white hover:bg-blue-700" 
-                            : "bg-slate-900 text-white hover:bg-blue-600"
-                        )}
-                      >
-                        {cart.find(c => c.drugId === med.drugId) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                        {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : 'Pedido'}
-                      </button>
+                  </td>
+                  <td className="px-4 py-5 text-center">
+                    <div className="flex items-center justify-center gap-2 text-slate-500">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span className="text-[10px] font-bold tracking-tight">{med.expirationDate || '---'}</span>
                     </div>
-                    {(activeRole === 'pharmacy' || activeRole === 'admin' || activeRole === 'doctor') && (
-                      <div className="flex items-center gap-1">
+                  </td>
+                  <td className="px-4 py-5 text-center">
+                    <span className={cn(
+                      "text-[9px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest",
+                      med.category === 'Niño' ? "bg-pink-100 text-pink-600" : "bg-slate-100 text-slate-600"
+                    )}>
+                      {med.category === 'Niño' ? 'Pediátrico' : 'Adulto'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-5 text-center">
+                    <div className="flex items-center justify-center gap-2 text-slate-400">
+                      <Layers className="h-3.5 w-3.5" />
+                      <span className="text-[10px] font-bold tracking-tight italic">{med.location || 'Vacío'}</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <div className="flex flex-col items-end">
+                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1 italic">Añadir a</span>
                         <button 
-                          onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
-                          className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
-                          title="Editar Medicamento"
+                          onClick={() => addToCart(med)}
+                          disabled={med.stock === '0' || !med.stock}
+                          className={cn(
+                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 flex items-center gap-2",
+                            cart.find(c => c.drugId === med.drugId) 
+                              ? "bg-blue-600 text-white hover:bg-blue-700" 
+                              : "bg-slate-900 text-white hover:bg-blue-600"
+                          )}
                         >
-                          <Edit2 className="h-4 w-4" />
-                        </button>
-                        <button 
-                          onClick={() => { setMedToDelete(med.drugId); setIsDeleteModalOpen(true); }}
-                          className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
-                          title="Eliminar Medicamento del Stock"
-                        >
-                          <Trash2 className="h-4 w-4" />
+                          {cart.find(c => c.drugId === med.drugId) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                          {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : 'Pedido'}
                         </button>
                       </div>
-                    )}
+                      {(activeRole === 'pharmacy' || activeRole === 'admin' || activeRole === 'doctor') && (
+                        <div className="flex items-center gap-1">
+                          <button 
+                            onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
+                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-all"
+                            title="Editar Medicamento"
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+                          <button 
+                            onClick={() => { setMedToDelete(med.drugId); setIsDeleteModalOpen(true); }}
+                            className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            title="Eliminar Medicamento del Stock"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Mobile Inventory List */}
+        <div className="md:hidden divide-y divide-slate-100">
+          {filteredMedicines.map((med) => (
+            <div key={med.drugId} className="p-4 sm:p-6 space-y-4">
+              <div className="flex justify-between items-start">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
+                    <Package className="h-5 w-5" />
                   </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                  <div>
+                    <p className="text-xs font-black text-slate-800">
+                      {med.drug} 
+                      {med.brandName && <span className="text-blue-500 ml-1 text-[10px]">({med.brandName})</span>}
+                    </p>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter line-clamp-1">
+                      #{med.drugId} • {med.dosage}
+                    </p>
+                  </div>
+                </div>
+                <div className={cn(
+                  "px-3 py-1 rounded-lg text-[10px] font-black border",
+                  (med.stock === '0' || !med.stock) ? "bg-red-50 text-red-600 border-red-100" : "bg-blue-50 text-blue-600 border-blue-100"
+                )}>
+                  Stock: {med.stock || '-'}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between pt-1">
+                <div className="space-y-1">
+                   <p className="text-[9px] font-bold text-slate-400 uppercase">Exp: {med.expirationDate || '---'}</p>
+                   <p className="text-[9px] font-bold text-slate-400 uppercase">Loc: {med.location || 'N/A'}</p>
+                </div>
+                <div className="flex gap-2">
+                  <button 
+                    onClick={() => addToCart(med)}
+                    disabled={med.stock === '0' || !med.stock}
+                    className={cn(
+                      "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm",
+                      cart.find(c => c.drugId === med.drugId) 
+                        ? "bg-blue-600 text-white" 
+                        : "bg-slate-900 text-white"
+                    )}
+                  >
+                    {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : '+ Pedido'}
+                  </button>
+                  <button 
+                    onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
+                    className="p-2 text-slate-400 bg-slate-50 border border-slate-100 rounded-xl"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
         {filteredMedicines.length === 0 && (
           <div className="p-20 text-center">
             <Package className="h-12 w-12 text-slate-200 mx-auto mb-4" />

@@ -53,6 +53,7 @@ function AppContent() {
     }
   }, [activeRole]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   if (!profile) return null;
 
@@ -86,17 +87,25 @@ function AppContent() {
   return (
     <div className="h-screen w-full bg-slate-50 flex flex-col font-sans overflow-hidden">
       {/* Top Header */}
-      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 z-50 shadow-sm">
+      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-8 shrink-0 z-50 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-200">
-            <div className="relative w-4 h-4 flex items-center justify-center">
-              <div className="absolute w-4 h-1 bg-white rounded-full"></div>
-              <div className="absolute h-4 w-1 bg-white rounded-full"></div>
+          <button 
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="p-2 -ml-2 text-slate-500 hover:text-slate-900 lg:hidden"
+          >
+            <LayoutDashboard className="h-5 w-5" />
+          </button>
+          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setActiveTab('inventory')}>
+            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-200 group-hover:scale-105 transition-transform">
+              <div className="relative w-4 h-4 flex items-center justify-center">
+                <div className="absolute w-4 h-1 bg-white rounded-full"></div>
+                <div className="absolute h-4 w-1 bg-white rounded-full"></div>
+              </div>
             </div>
-          </div>
-          <div>
-            <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none uppercase">Equipo de<span className="text-blue-600">salud</span></h1>
-            <p className="text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores</p>
+            <div className="hidden xs:block">
+              <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none uppercase">Equipo de<span className="text-blue-600">salud</span></h1>
+              <p className="text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores</p>
+            </div>
           </div>
         </div>
         
@@ -225,11 +234,22 @@ function AppContent() {
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden lg:flex-row">
+        {/* Mobile Sidebar Overlay */}
+        {isMobileMenuOpen && (
+          <div 
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[60] lg:hidden animate-in fade-in duration-300"
+            onClick={() => setIsMobileMenuOpen(false)}
+          />
+        )}
+
         {/* Side Navigation */}
-        <aside className="w-80 bg-white border-r border-slate-200 p-8 flex flex-col gap-10 overflow-y-auto">
+        <aside className={cn(
+          "fixed inset-y-0 left-0 w-80 bg-white border-r border-slate-200 p-8 flex flex-col gap-10 overflow-y-auto transition-transform duration-300 ease-in-out z-[70] lg:relative lg:translate-x-0 lg:z-0",
+          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+        )}>
           {/* Status Check */}
-          <div className="bg-slate-900 rounded-3xl p-5 shadow-xl shadow-slate-200">
+          <div className="bg-slate-900 rounded-3xl p-5 shadow-xl shadow-slate-200 hidden lg:block">
              <div className="flex items-center justify-between mb-4">
                 <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
@@ -253,7 +273,10 @@ function AppContent() {
             {NAV_ITEMS.filter(item => item.roles.includes(activeRole || '')).map(item => (
               <button 
                 key={item.id}
-                onClick={() => setActiveTab(item.id)}
+                onClick={() => {
+                  setActiveTab(item.id);
+                  setIsMobileMenuOpen(false);
+                }}
                 className={cn(
                   "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
                   activeTab === item.id 
@@ -286,12 +309,12 @@ function AppContent() {
 
         {/* Main Workspace */}
         <main className="flex-1 overflow-hidden flex flex-col">
-          <div className="flex-1 p-10 overflow-y-auto">
-            <div className="max-w-7xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="flex-1 p-4 sm:p-10 overflow-y-auto">
+            <div className="max-w-7xl mx-auto space-y-8 sm:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* Profile Bar (Quick Action) */}
-              <div className="flex items-end justify-between border-b border-slate-200 pb-10">
+              <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-8 sm:pb-10 gap-4">
                 <div>
-                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                     {activeTab === 'inventory' ? 'Inventario Central' : 
                      activeTab === 'orders' ? (isPharmacyView ? 'Cola de Dispensación' : 'Mis Prescripciones') : 
                      activeTab === 'patients' ? 'Historias Clínicas' :

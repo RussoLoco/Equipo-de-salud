@@ -21,6 +21,9 @@ export default function OrdersList() {
   useEffect(() => {
     let q;
     const ordersCol = collection(db, 'orders');
+    
+    // Cost Optimization: We can refine this to fetch only what is strictly necessary.
+    // However, since we want real-time updates for both, limit(100) is a safe balance.
     if (isDoctor && !isAdmin) {
       q = query(
         ordersCol,
@@ -32,7 +35,7 @@ export default function OrdersList() {
       q = query(
         ordersCol,
         orderBy('date', 'desc'),
-        limit(200)
+        limit(150)
       );
     }
     
@@ -104,7 +107,7 @@ export default function OrdersList() {
   return (
     <div className="space-y-12">
       <section>
-        <div className="mb-6 flex items-center justify-between">
+        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
               <Clock className="text-amber-500 h-5 w-5" />
@@ -112,18 +115,18 @@ export default function OrdersList() {
             </h2>
             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Pedidos en espera de validación</p>
           </div>
-          <span className="rounded-lg bg-amber-50 px-4 py-1.5 text-xs font-bold text-amber-700 border border-amber-100 shadow-sm">
+          <span className="self-start sm:self-center rounded-lg bg-amber-50 px-4 py-1.5 text-xs font-bold text-amber-700 border border-amber-100 shadow-sm">
             {pendingOrders.length} Pendientes
           </span>
         </div>
 
         {pendingOrders.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-slate-200 p-16 text-center">
+          <div className="rounded-2xl border-2 border-dashed border-slate-200 p-8 sm:p-16 text-center">
             <ShoppingBag className="mx-auto h-12 w-12 text-slate-200 mb-4" />
             <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Sin actividad pendiente</p>
           </div>
         ) : (
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
             {pendingOrders.map((order) => (
               <div
                 key={order.orderId}
@@ -225,9 +228,10 @@ export default function OrdersList() {
           <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Registros de pedidos finalizados</p>
         </div>
 
-        <div className="bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col overflow-hidden">
+        <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-xl shadow-sm flex flex-col overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-slate-600">
+            {/* Desktop View Table */}
+            <table className="w-full text-left text-sm text-slate-600 hidden sm:table">
               <thead>
                 <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-widest border-b border-slate-100">
                   <th className="px-6 py-4">Prescripción / Folio</th>
@@ -265,6 +269,30 @@ export default function OrdersList() {
                 ))}
               </tbody>
             </table>
+
+            {/* Mobile View Cards */}
+            <div className="sm:hidden divide-y divide-slate-100">
+               {deliveredOrders.slice(0, 5).map((order) => (
+                 <div key={order.orderId} className="p-4 bg-white">
+                   <div className="flex justify-between items-start mb-2">
+                     <div>
+                        <p className="text-xs font-black text-slate-800">{order.patientName || 'Paciente Anónimo'}</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">DNI: {order.patientDni || '---'}</p>
+                     </div>
+                     <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">ENTREGADO</span>
+                   </div>
+                   <div className="flex flex-wrap gap-1 mb-3">
+                     {order.items.map((item, idx) => (
+                       <span key={idx} className="text-[8px] font-bold bg-slate-50 text-slate-500 px-1 py-0.5 rounded border border-slate-100">
+                         {item.drugName} (x{item.quantity})
+                       </span>
+                     ))}
+                   </div>
+                   <p className="text-[8px] font-mono text-slate-300 uppercase">FOLIO: {order.orderId.slice(-8)} • {format(new Date(order.date), "dd/MM HH:mm")}</p>
+                 </div>
+               ))}
+            </div>
+
             {deliveredOrders.length === 0 && (
               <div className="py-12 text-center text-slate-300 font-medium">Historial vacío.</div>
             )}
