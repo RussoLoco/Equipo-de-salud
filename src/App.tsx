@@ -1,0 +1,351 @@
+import React, { useState } from 'react';
+import { AuthProvider, useAuth } from './components/AuthProvider';
+import Inventory from './components/Inventory';
+import OrdersList from './components/OrdersList';
+import AdminPanel from './components/AdminPanel';
+import Patients from './components/Patients';
+import MedicalConsultation from './components/MedicalConsultation';
+import { 
+  Pill, 
+  ShoppingBag, 
+  LayoutDashboard, 
+  Settings, 
+  LogOut, 
+  User, 
+  ChevronDown,
+  ShieldAlert,
+  Stethoscope,
+  Briefcase,
+  Users,
+  ClipboardList,
+  History
+} from 'lucide-react';
+import { cn } from './lib/utils';
+
+function AppContent() {
+  const { profile, activeRole, isSuperAdmin, toggleAdminView, signOut } = useAuth();
+  
+  // Navigation Configuration - Reducir Overengineering de condicionales
+  const NAV_ITEMS = [
+    { id: 'patients', label: activeRole === 'nurse' ? 'Biometría' : activeRole === 'nutritionist' ? 'Control Nutricional' : 'Gestión de Pacientes', roles: ['admission', 'nurse', 'nutritionist', 'admin'] },
+    { id: 'consultation', label: 'Consulta Médica', roles: ['doctor', 'admin'] },
+    { id: 'inventory', label: 'Existencias', roles: ['pharmacy', 'admin'] },
+    { id: 'orders', label: activeRole === 'pharmacy' ? 'Cola de Dispensación' : 'Mis Pedidos', roles: ['pharmacy', 'admin'] },
+    { id: 'admin', label: 'Panel de Control', roles: ['admin'] }
+  ] as const;
+
+  type TabId = typeof NAV_ITEMS[number]['id'];
+  const [activeTab, setActiveTab] = useState<TabId>('inventory');
+
+  // Initial tab and sync logic simplified
+  React.useEffect(() => {
+    const roleDefaults: Record<string, TabId> = {
+      admission: 'patients',
+      nurse: 'patients',
+      nutritionist: 'patients',
+      doctor: 'consultation',
+      pharmacy: 'inventory',
+      admin: 'admin'
+    };
+
+    if (activeRole && roleDefaults[activeRole]) {
+      setActiveTab(roleDefaults[activeRole]);
+    }
+  }, [activeRole]);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+
+  if (!profile) return null;
+
+  // If user is pending, show access restricted message
+  if (profile.isPending && profile.role === 'PENDIENTE') {
+    return (
+      <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
+        <div className="w-20 h-20 bg-amber-100 rounded-[2rem] flex items-center justify-center text-amber-600 mb-6 border border-amber-200 shadow-xl shadow-amber-100">
+          <ShieldAlert className="h-10 w-10" />
+        </div>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Acceso Restringido</h1>
+        <p className="text-slate-500 font-medium max-w-sm mb-8 leading-relaxed">Tu solicitud de rol ha sido enviada al Administrador. Serás notificado cuando tu cuenta sea activada.</p>
+        <button 
+          onClick={signOut}
+          className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-2"
+        >
+          <LogOut className="h-4 w-4" />
+          Cerrar Sesion
+        </button>
+      </div>
+    );
+  }
+
+  const isPharmacyView = activeRole === 'pharmacy';
+  const isAdmin = profile.role === 'admin' || isSuperAdmin;
+  const isAdmission = activeRole === 'admission';
+  const isNurse = activeRole === 'nurse';
+  const isDoctor = activeRole === 'doctor';
+  const isNutritionist = activeRole === 'nutritionist';
+  
+  return (
+    <div className="h-screen w-full bg-slate-50 flex flex-col font-sans overflow-hidden">
+      {/* Top Header */}
+      <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 shrink-0 z-50 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-200">
+            <div className="relative w-4 h-4 flex items-center justify-center">
+              <div className="absolute w-4 h-1 bg-white rounded-full"></div>
+              <div className="absolute h-4 w-1 bg-white rounded-full"></div>
+            </div>
+          </div>
+          <div>
+            <h1 className="text-lg font-black text-slate-800 tracking-tight leading-none uppercase">Equipo de<span className="text-blue-600">salud</span></h1>
+            <p className="text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <button 
+              onClick={() => setShowProfileMenu(!showProfileMenu)}
+              className={cn(
+                "flex items-center gap-3 p-1 pr-4 rounded-full border transition-all",
+                showProfileMenu ? "border-blue-200 bg-blue-50 ring-4 ring-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
+              )}
+            >
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200 overflow-hidden">
+                <User className="h-4 w-4" />
+              </div>
+              <div className="text-left hidden sm:block">
+                <p className="text-[10px] font-black text-slate-700 leading-tight uppercase">{profile.name}</p>
+                <p className="text-[9px] font-bold text-blue-500 uppercase tracking-tighter">{activeRole}</p>
+              </div>
+              <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform", showProfileMenu && "rotate-180")} />
+            </button>
+
+            {showProfileMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowProfileMenu(false)} />
+                <div className="absolute right-0 mt-3 w-72 bg-white rounded-3xl shadow-2xl border border-slate-200 p-3 z-20 animate-in fade-in zoom-in-95 duration-200">
+                  <div className="px-4 py-4 mb-3 bg-slate-50 rounded-2xl border border-slate-100">
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Perfil de Usuario</p>
+                    <p className="text-xs font-bold text-slate-800 truncate">{profile.name}</p>
+                    <p className="text-xs text-slate-500">{profile.email}</p>
+                    <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">{profile.phone || 'Sin teléfono'}</p>
+                  </div>
+
+                  {isSuperAdmin && (
+                    <div className="mb-3 px-1">
+                      <p className="px-3 py-1 text-[9px] font-black text-blue-600 uppercase tracking-[0.2em] bg-blue-50/50 rounded-lg mb-2">Control Maestro Admin</p>
+                      <div className="grid grid-cols-3 gap-1">
+                        <button 
+                          onClick={() => { toggleAdminView('admission'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'admission' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <Users className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Admisión</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('nurse'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'nurse' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <ClipboardList className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Nurse</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('doctor'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'doctor' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <Stethoscope className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Médico</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('pharmacy'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'pharmacy' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <Briefcase className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Farmacia</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('nutritionist'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'nutritionist' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <History className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Nutrición</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('admin'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'admin' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <ShieldAlert className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Admin</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {profile.role === 'admin' && (
+                    <button 
+                      onClick={() => { setActiveTab('admin'); setShowProfileMenu(false); }}
+                      className={cn(
+                        "flex w-full items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold transition-all mb-1 hover:bg-slate-50",
+                        activeTab === 'admin' ? "text-blue-600 bg-blue-50/50 shadow-sm" : "text-slate-600"
+                      )}
+                    >
+                      <LayoutDashboard className="h-4 w-4" />
+                      Panel Administrativo
+                    </button>
+                  )}
+
+                  <button
+                    onClick={signOut}
+                    className="flex w-full items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold text-red-500 hover:bg-red-50 transition-all uppercase tracking-widest mt-1 border border-transparent hover:border-red-100"
+                  >
+                    <LogOut className="h-4 w-4" />
+                    Cerrar Sesion
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </header>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Side Navigation */}
+        <aside className="w-80 bg-white border-r border-slate-200 p-8 flex flex-col gap-10 overflow-y-auto">
+          {/* Status Check */}
+          <div className="bg-slate-900 rounded-3xl p-5 shadow-xl shadow-slate-200">
+             <div className="flex items-center justify-between mb-4">
+                <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
+                   <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
+                </div>
+                <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest px-2 py-0.5 rounded bg-blue-500/10">Online</span>
+             </div>
+             <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] mb-1">Módulo Activo</p>
+             <p className="text-xs font-bold text-slate-400 truncate">
+               {activeRole === 'pharmacy' ? 'Dispensación Farmacéutica' : 
+                activeRole === 'admin' ? 'Infraestructura Admin' : 
+                activeRole === 'admission' ? 'Gestión de Pacientes' :
+                activeRole === 'nurse' ? 'Antropometría y Enfermería' :
+                activeRole === 'nutritionist' ? 'Evaluación Nutricional' :
+                'Atención Médica'}
+             </p>
+          </div>
+
+          <nav className="space-y-1">
+            <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">Menú Principal</p>
+            
+            {NAV_ITEMS.filter(item => item.roles.includes(activeRole || '')).map(item => (
+              <button 
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={cn(
+                  "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
+                  activeTab === item.id 
+                    ? "bg-slate-100 text-slate-900 shadow-sm" 
+                    : "text-slate-500 hover:bg-slate-50"
+                )}
+              >
+                <div className={cn(
+                  "w-1 h-6 rounded-full transition-all",
+                  activeTab === item.id ? "bg-blue-600" : "bg-transparent group-hover:bg-slate-200"
+                )} />
+                {item.label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="mt-auto space-y-4">
+            <div className="bg-blue-600 rounded-3xl p-6 text-white overflow-hidden relative shadow-xl shadow-blue-100">
+               <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
+               <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-3">Ayuda & Soporte</p>
+               <p className="text-xs font-bold leading-relaxed">¿Necesitas asistencia técnica con la plataforma?</p>
+               <button className="mt-4 w-full py-2 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-colors">Contactar IT</button>
+            </div>
+            
+            <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+              Versión Stable 2.4.0
+            </p>
+          </div>
+        </aside>
+
+        {/* Main Workspace */}
+        <main className="flex-1 overflow-hidden flex flex-col">
+          <div className="flex-1 p-10 overflow-y-auto">
+            <div className="max-w-7xl mx-auto space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              {/* Profile Bar (Quick Action) */}
+              <div className="flex items-end justify-between border-b border-slate-200 pb-10">
+                <div>
+                  <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                    {activeTab === 'inventory' ? 'Inventario Central' : 
+                     activeTab === 'orders' ? (isPharmacyView ? 'Cola de Dispensación' : 'Mis Prescripciones') : 
+                     activeTab === 'patients' ? 'Historias Clínicas' :
+                     activeTab === 'consultation' ? 'Atención Evolutiva' :
+                     'Panel de Control Maestro'}
+                  </h2>
+                  <p className="text-slate-400 text-sm font-bold mt-2 uppercase tracking-widest">
+                     {activeTab === 'inventory' ? 'Consulta de stock critico y regular' : 
+                     activeTab === 'orders' ? 'Gestión de vales y entregas pendientes' : 
+                     activeTab === 'patients' ? 'Registro y seguimiento de pacientes' :
+                     activeTab === 'consultation' ? 'Registro de evolución médica y recetas' :
+                     'Mantenimiento de infraestructura y usuarios'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pb-20">
+                {activeTab === 'inventory' && (activeRole === 'admin' || isPharmacyView) && <Inventory />}
+                {activeTab === 'orders' && (activeRole === 'admin' || isPharmacyView) && <OrdersList />}
+                {activeTab === 'admin' && isAdmin && activeRole === 'admin' && <AdminPanel />}
+                {activeTab === 'patients' && (isAdmission || isNurse || isNutritionist || activeRole === 'admin') && <Patients />}
+                {activeTab === 'consultation' && (isDoctor || activeRole === 'admin') && <MedicalConsultation />}
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Status Bar */}
+          <footer className="h-10 bg-white border-t border-slate-200 flex items-center gap-8 px-8 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] font-black">Equipo de Salud OS</p>
+            </div>
+            <div className="flex items-center gap-4 ml-auto">
+              <p className="text-[10px] text-slate-400 font-mono italic">
+                {activeRole?.toUpperCase()}_ENV_PRODUCTION
+              </p>
+              <div className="w-px h-3 bg-slate-200"></div>
+              <div className="flex items-center gap-1.5 text-blue-600 font-black text-[9px] uppercase tracking-widest">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                Sync Ok
+              </div>
+            </div>
+          </footer>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+}
+

@@ -1,0 +1,166 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Helpers ---
+    function isSignedIn() { return request.auth != null; }
+    function isSuper() { 
+      return isSignedIn() && request.auth.token.email == 'davidhhgg620@gmail.com'; 
+    }
+    
+    function getUserRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+    
+    function isAdmin() { 
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserRole() == 'admin')
+      );
+    }
+    
+    function isPharmacy() { 
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'pharmacy'))
+      );
+    }
+    
+    function isDoctor() { 
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'doctor'))
+      );
+    }
+    
+    function isAdmission() { 
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'admission'))
+      );
+    }
+    
+    function isNurse() { 
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'nurse'))
+      );
+    }
+
+    function isNutritionist() { 
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'nutritionist'))
+      );
+    }
+    
+    function isValidId(id) { 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_ .\\-()#:]+$'); 
+    }
+    
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // --- Validation Blueprints ---
+    function isValidPatient(data) {
+      return data.keys().hasAll(['id', 'dni', 'name', 'createdAt'])
+        && data.id is string
+        && data.dni is string
+        && data.name is string;
+    }
+
+    function isValidVisit(data) {
+      let required = ['id', 'patientId', 'patientName', 'patientDni', 'date', 'status', 'vitals'];
+      return data.keys().hasAll(required)
+        && data.status in ['espera', 'atendido'];
+    }
+
+    function isValidMedicine(data) {
+      let requiredFields = ['drugId', 'drug', 'category', 'presentation', 'laboratory', 'location', 'stock'];
+      return data.keys().hasAll(requiredFields)
+        && data.drugId is string && data.drugId.size() <= 128
+        && data.drug is string && data.drug.size() <= 600
+        && data.category in ['Niño', 'Adulto']
+        && data.stock is string;
+    }
+
+    function isValidOrder(data) {
+      let required = ['orderId', 'date', 'doctorId', 'doctorName', 'items', 'status', 'location', 'patientId', 'patientName', 'patientDni'];
+      return data.keys().hasAll(required)
+        && data.keys().size() == 10
+        && data.orderId is string && data.orderId.size() <= 100
+        && data.status in ['Pendiente', 'Entregado']
+        && data.doctorId == request.auth.uid
+        && data.items is list
+        && data.items.size() > 0;
+    }
+
+    // --- Rules ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && (request.auth.uid == userId || isSuper());
+      allow list: if isSuper() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserRole() == 'admin');
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isSignedIn() && (
+        isAdmin() || 
+        (request.auth.uid == userId && incoming().role == existing().role && incoming().isPending == existing().isPending)
+      );
+    }
+
+    match /inventory/{drugId} {
+      allow read: if isSignedIn();
+      allow create: if (isPharmacy() || isAdmin()) && isValidId(drugId) && isValidMedicine(incoming());
+      allow update: if (isPharmacy() || isAdmin()) && (
+          isValidMedicine(incoming()) || 
+          incoming().diff(existing()).affectedKeys().hasOnly(['stock'])
+        );
+      allow delete: if isPharmacy() || isDoctor() || isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow get: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
+      allow list: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
+      allow create: if isDoctor() && isValidOrder(incoming()) && incoming().status == 'Pendiente';
+      allow update: if (isPharmacy() && incoming().status == 'Entregado' && existing().status == 'Pendiente' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
+        || (isDoctor() && existing().status == 'Pendiente' && isValidOrder(incoming()));
+      allow delete: if isAdmin();
+    }
+    
+    match /uploads_history/{uploadId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /doctors/{doctorId} {
+      allow read: if isSignedIn();
+      allow write: if isPharmacy();
+    }
+
+    match /patients/{patientId} {
+      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isAdmin() || isSuper());
+      allow create: if (isAdmission() || isAdmin()) && isValidPatient(incoming());
+      allow update: if (isAdmission() || isDoctor() || isAdmin()) && (
+          isValidPatient(incoming()) || 
+          (incoming().diff(existing()).affectedKeys().hasOnly(['clinicalHistory']))
+        );
+      allow delete: if isAdmin();
+      
+      match /visits/{visitId} {
+        allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isAdmin() || isSuper());
+        allow create: if isNurse() && isValidVisit(incoming());
+        allow update: if (isDoctor() || isNurse() || isAdmin() || isSuper()) && isValidVisit(incoming());
+      }
+    }
+
+    match /visits/{visitId} {
+      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isAdmin() || isSuper());
+      allow create: if isNurse() && isValidVisit(incoming());
+      allow update: if (isDoctor() || isNurse() || isAdmin() || isSuper()) && isValidVisit(incoming());
+    }
+  }
+}
