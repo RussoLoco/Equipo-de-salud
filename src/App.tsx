@@ -1,10 +1,14 @@
-import React, { useState } from 'react';
+// App Entry Point - Fixed Hook Errors
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './components/AuthProvider';
 import Inventory from './components/Inventory';
 import OrdersList from './components/OrdersList';
 import AdminPanel from './components/AdminPanel';
 import Patients from './components/Patients';
 import MedicalConsultation from './components/MedicalConsultation';
+import NutritionistConsultation from './components/NutritionistConsultation';
+import SpecialistConsultation from './components/SpecialistConsultation';
+import AdminHistory from './components/AdminHistory';
 import { 
   Pill, 
   ShoppingBag, 
@@ -18,33 +22,39 @@ import {
   Briefcase,
   Users,
   ClipboardList,
-  History
+  History,
+  Activity
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
 function AppContent() {
   const { profile, activeRole, isSuperAdmin, toggleAdminView, signOut } = useAuth();
   
-  // Navigation Configuration - Reducir Overengineering de condicionales
+  // Navigation Configuration - Icons and Labels
   const NAV_ITEMS = [
-    { id: 'patients', label: activeRole === 'nurse' ? 'Biometría' : activeRole === 'nutritionist' ? 'Control Nutricional' : 'Gestión de Pacientes', roles: ['admission', 'nurse', 'nutritionist', 'admin'] },
-    { id: 'consultation', label: 'Consulta Médica', roles: ['doctor', 'admin'] },
-    { id: 'inventory', label: 'Existencias', roles: ['pharmacy', 'admin'] },
-    { id: 'orders', label: activeRole === 'pharmacy' ? 'Cola de Dispensación' : 'Mis Pedidos', roles: ['pharmacy', 'admin'] },
-    { id: 'admin', label: 'Panel de Control', roles: ['admin'] }
+    { id: 'history', label: 'Historial Admin', roles: ['admin'], type: 'core', icon: History },
+    { id: 'admin', label: 'Panel de Control', roles: ['admin'], type: 'core', icon: Settings },
+    { id: 'patients', label: activeRole === 'nurse' ? 'Biometría' : activeRole === 'nutritionist' ? 'Control Nutricional' : 'Admisión Pacientes', roles: ['admission', 'nurse', 'nutritionist', 'admin'], type: 'operational', icon: activeRole === 'nurse' ? ClipboardList : Users },
+    { id: 'consultation', label: 'Consulta Médica', roles: ['doctor', 'admin'], type: 'operational', icon: Stethoscope },
+    { id: 'specialist', label: 'Especialidades', roles: ['ecografista', 'psiquiatra', 'odontologo'], type: 'operational', icon: Activity },
+    { id: 'inventory', label: 'Existencias', roles: ['pharmacy', 'admin'], type: 'operational', icon: ShoppingBag },
+    { id: 'orders', label: activeRole === 'pharmacy' ? 'Cola de Dispensación' : 'Mis Pedidos', roles: ['pharmacy', 'admin'], type: 'operational', icon: Pill }
   ] as const;
 
   type TabId = typeof NAV_ITEMS[number]['id'];
   const [activeTab, setActiveTab] = useState<TabId>('inventory');
 
   // Initial tab and sync logic simplified
-  React.useEffect(() => {
+  useEffect(() => {
     const roleDefaults: Record<string, TabId> = {
       admission: 'patients',
       nurse: 'patients',
       nutritionist: 'patients',
       doctor: 'consultation',
       pharmacy: 'inventory',
+      ecografista: 'specialist',
+      psiquiatra: 'specialist',
+      odontologo: 'specialist',
       admin: 'admin'
     };
 
@@ -54,6 +64,7 @@ function AppContent() {
   }, [activeRole]);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isOperationalOpen, setIsOperationalOpen] = useState(false);
 
   if (!profile) return null;
 
@@ -83,6 +94,7 @@ function AppContent() {
   const isNurse = activeRole === 'nurse';
   const isDoctor = activeRole === 'doctor';
   const isNutritionist = activeRole === 'nutritionist';
+  const isSpecialist = activeRole === 'ecografista' || activeRole === 'psiquiatra' || activeRole === 'odontologo';
   
   return (
     <div className="h-screen w-full bg-slate-50 flex flex-col font-sans overflow-hidden">
@@ -194,6 +206,36 @@ function AppContent() {
                           <span className="text-[8px] font-bold uppercase tracking-tighter">Nutrición</span>
                         </button>
                         <button 
+                          onClick={() => { toggleAdminView('ecografista'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'ecografista' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <Activity className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Eco</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('psiquiatra'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'psiquiatra' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <Users className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Psiq</span>
+                        </button>
+                        <button 
+                          onClick={() => { toggleAdminView('odontologo'); setShowProfileMenu(false); }}
+                          className={cn(
+                            "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
+                            activeRole === 'odontologo' ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <Stethoscope className="h-4 w-4" />
+                          <span className="text-[8px] font-bold uppercase tracking-tighter">Odonto</span>
+                        </button>
+                        <button 
                           onClick={() => { toggleAdminView('admin'); setShowProfileMenu(false); }}
                           className={cn(
                             "flex flex-col items-center gap-1.5 p-2 rounded-xl transition-all",
@@ -263,6 +305,9 @@ function AppContent() {
                 activeRole === 'admission' ? 'Gestión de Pacientes' :
                 activeRole === 'nurse' ? 'Antropometría y Enfermería' :
                 activeRole === 'nutritionist' ? 'Evaluación Nutricional' :
+                activeRole === 'ecografista' ? 'Gabinete de Ecografía' :
+                activeRole === 'psiquiatra' ? 'Consultorio Psiquiatra' :
+                activeRole === 'odontologo' ? 'Consultorio Odontológico' :
                 'Atención Médica'}
              </p>
           </div>
@@ -270,27 +315,94 @@ function AppContent() {
           <nav className="space-y-1">
             <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">Menú Principal</p>
             
-            {NAV_ITEMS.filter(item => item.roles.includes(activeRole || '')).map(item => (
-              <button 
-                key={item.id}
-                onClick={() => {
-                  setActiveTab(item.id);
-                  setIsMobileMenuOpen(false);
-                }}
-                className={cn(
-                  "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
-                  activeTab === item.id 
-                    ? "bg-slate-100 text-slate-900 shadow-sm" 
-                    : "text-slate-500 hover:bg-slate-50"
-                )}
-              >
-                <div className={cn(
-                  "w-1 h-6 rounded-full transition-all",
-                  activeTab === item.id ? "bg-blue-600" : "bg-transparent group-hover:bg-slate-200"
-                )} />
-                {item.label}
-              </button>
-            ))}
+            {activeRole === 'admin' ? (
+              <div className="space-y-4">
+                {/* Core Items for Admin */}
+                <div className="space-y-1">
+                  {NAV_ITEMS.filter(item => (item.roles as readonly string[]).includes('admin') && item.type === 'core').map(item => (
+                    <button 
+                      key={item.id}
+                      onClick={() => {
+                        setActiveTab(item.id);
+                        setIsMobileMenuOpen(false);
+                      }}
+                      className={cn(
+                        "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
+                        activeTab === item.id 
+                          ? "bg-slate-100 text-slate-900 shadow-sm" 
+                          : "text-slate-500 hover:bg-slate-50"
+                      )}
+                    >
+                      <item.icon className={cn(
+                        "h-5 w-5 transition-colors",
+                        activeTab === item.id ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
+                      )} />
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Collapsible Operational Items */}
+                <div className="space-y-1">
+                  <button 
+                    onClick={() => setIsOperationalOpen(!isOperationalOpen)}
+                    className="flex items-center justify-between w-full p-4 rounded-2xl font-bold text-sm text-slate-400 hover:bg-slate-50 transition-all uppercase tracking-widest text-[10px]"
+                  >
+                    Vistas Operativas
+                    <ChevronDown className={cn("h-4 w-4 transition-transform", isOperationalOpen && "rotate-180")} />
+                  </button>
+                  
+                  {isOperationalOpen && (
+                    <div className="space-y-1 ml-4 border-l border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
+                      {NAV_ITEMS.filter(item => (item.roles as readonly string[]).includes('admin') && item.type === 'operational').map(item => (
+                        <button 
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            setIsMobileMenuOpen(false);
+                          }}
+                          className={cn(
+                            "flex items-center gap-4 w-full p-3 rounded-xl font-bold transition-all text-xs group",
+                            activeTab === item.id 
+                              ? "text-blue-600 bg-blue-50" 
+                              : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                          )}
+                        >
+                          <item.icon className={cn(
+                            "h-4 w-4 transition-colors",
+                            activeTab === item.id ? "text-blue-600" : "text-slate-300"
+                          )} />
+                          {item.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              /* Non-Admin Menu */
+              NAV_ITEMS.filter(item => (item.roles as readonly string[]).includes(activeRole || '')).map(item => (
+                <button 
+                  key={item.id}
+                  onClick={() => {
+                    setActiveTab(item.id);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className={cn(
+                    "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
+                    activeTab === item.id 
+                      ? "bg-slate-100 text-slate-900 shadow-sm" 
+                      : "text-slate-500 hover:bg-slate-50"
+                  )}
+                >
+                  <item.icon className={cn(
+                    "h-5 w-5 transition-colors",
+                    activeTab === item.id ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
+                  )} />
+                  {item.label}
+                </button>
+              ))
+            )}
           </nav>
 
           <div className="mt-auto space-y-4">
@@ -312,31 +424,38 @@ function AppContent() {
           <div className="flex-1 p-4 sm:p-10 overflow-y-auto">
             <div className="max-w-7xl mx-auto space-y-8 sm:space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-500">
               {/* Profile Bar (Quick Action) */}
-              <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-8 sm:pb-10 gap-4">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-                    {activeTab === 'inventory' ? 'Inventario Central' : 
-                     activeTab === 'orders' ? (isPharmacyView ? 'Cola de Dispensación' : 'Mis Prescripciones') : 
-                     activeTab === 'patients' ? 'Historias Clínicas' :
-                     activeTab === 'consultation' ? 'Atención Evolutiva' :
-                     'Panel de Control Maestro'}
-                  </h2>
-                  <p className="text-slate-400 text-sm font-bold mt-2 uppercase tracking-widest">
-                     {activeTab === 'inventory' ? 'Consulta de stock critico y regular' : 
-                     activeTab === 'orders' ? 'Gestión de vales y entregas pendientes' : 
-                     activeTab === 'patients' ? 'Registro y seguimiento de pacientes' :
-                     activeTab === 'consultation' ? 'Registro de evolución médica y recetas' :
-                     'Mantenimiento de infraestructura y usuarios'}
-                  </p>
+              {!isSpecialist && !isNutritionist && (
+                <div className="flex flex-col sm:flex-row sm:items-end justify-between border-b border-slate-200 pb-8 sm:pb-10 gap-4">
+                  <div>
+                    <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                      {activeTab === 'inventory' ? 'Inventario Central' : 
+                       activeTab === 'history' ? 'Consolidado Histórico' :
+                       activeTab === 'orders' ? (isPharmacyView ? 'Cola de Dispensación' : 'Mis Prescripciones') : 
+                       activeTab === 'patients' ? 'Historias Clínicas' :
+                       activeTab === 'consultation' ? 'Atención Evolutiva' :
+                       'Panel de Control Maestro'}
+                    </h2>
+                    <p className="text-slate-400 text-sm font-bold mt-2 uppercase tracking-widest">
+                       {activeTab === 'inventory' ? 'Consulta de stock critico y regular' : 
+                       activeTab === 'history' ? 'Control de recetas, pacientes y reportes de salida' :
+                       activeTab === 'orders' ? 'Gestión de vales y entregas pendientes' : 
+                       activeTab === 'patients' ? 'Registro y seguimiento de pacientes' :
+                       activeTab === 'consultation' ? 'Registro de evolución médica y recetas' :
+                       'Mantenimiento de infraestructura y usuarios'}
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="pb-20">
                 {activeTab === 'inventory' && (activeRole === 'admin' || isPharmacyView) && <Inventory />}
+                {activeTab === 'history' && activeRole === 'admin' && <AdminHistory />}
                 {activeTab === 'orders' && (activeRole === 'admin' || isPharmacyView) && <OrdersList />}
                 {activeTab === 'admin' && isAdmin && activeRole === 'admin' && <AdminPanel />}
-                {activeTab === 'patients' && (isAdmission || isNurse || isNutritionist || activeRole === 'admin') && <Patients />}
+                {activeTab === 'patients' && (isAdmission || isNurse || (activeRole === 'admin' && activeTab === 'patients')) && <Patients />}
+                {activeTab === 'patients' && isNutritionist && <NutritionistConsultation />}
                 {activeTab === 'consultation' && (isDoctor || activeRole === 'admin') && <MedicalConsultation />}
+                {activeTab === 'specialist' && (isSpecialist || activeRole === 'admin') && <SpecialistConsultation forcedRole={activeRole} />}
               </div>
             </div>
           </div>

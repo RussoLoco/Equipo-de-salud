@@ -1,4 +1,4 @@
-export type UserRole = 'doctor' | 'pharmacy' | 'admin' | 'admission' | 'nurse' | 'nutritionist';
+export type UserRole = 'doctor' | 'pharmacy' | 'admin' | 'admission' | 'nurse' | 'nutritionist' | 'ecografista' | 'psiquiatra' | 'odontologo';
 
 export interface UserProfile {
   uid: string;
@@ -34,6 +34,8 @@ export interface Patient {
   phone?: string;
   category?: 'Adulto' | 'Niño';
   clinicalHistory?: string; // Nuevo: Historia clínica permanente
+  guardianName?: string;    // Nuevo: Nombre del responsable (Niño)
+  guardianRelation?: 'Madre' | 'Padre' | 'Familiar'; // Nuevo: Parentesco
 }
 
 export interface Vitals {
@@ -60,8 +62,10 @@ export interface PatientVisit {
   patientDni: string;
   age?: string;
   location?: string;
+  category?: 'Adulto' | 'Niño';
   date: string;
-  status: 'checkin' | 'espera' | 'atendiendo' | 'atendido';
+  status: 'checkin' | 'espera' | 'atendiendo' | 'atendiendo_nutri' | 'atendiendo_especialista' | 'atendido';
+  serviceType?: 'pediatría' | 'clínico' | 'ecografía' | 'psiquiatra' | 'odontología' | 'nutricionista';
   vitals: Vitals;
   evolution?: MedicalEvolution;
   orderIds?: string[]; // IDs de pedidos vinculados
@@ -93,4 +97,5 @@ export interface Order {
   items: OrderItem[];
   status: 'Pendiente' | 'Entregado';
   location: string;
+  deliveredAt?: string; // Nuevo: Fecha de entrega
 }

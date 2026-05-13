@@ -107,11 +107,22 @@ export default function UserManagement() {
                     u.role === 'admin' ? "bg-slate-900 text-white shadow-lg" :
                     u.role === 'admission' ? "bg-amber-100 text-amber-700 shadow-sm" :
                     u.role === 'nurse' ? "bg-emerald-100 text-emerald-700 shadow-sm" :
-                    u.role === 'nutritionist' ? "bg-orange-100 text-orange-700 shadow-sm" :
+                    u.role === 'nutritionist' ? "bg-orange-100 text-orange-700 shadow-sm" : 
+                    u.role === 'ecografista' ? "bg-blue-900 text-blue-100 shadow-sm" :
+                    u.role === 'psiquiatra' ? "bg-indigo-100 text-indigo-700 shadow-sm" :
+                    u.role === 'odontologo' ? "bg-teal-100 text-teal-700 shadow-sm" :
                     u.role === 'PENDIENTE' ? "bg-red-50 text-red-600 border border-red-100 animate-pulse" :
                     "bg-blue-100 text-blue-700 shadow-sm"
                   )}>
-                    {u.role === 'pharmacy' ? 'Farmacia' : u.role === 'admin' ? 'Administrador' : u.role === 'admission' ? 'Admisión' : u.role === 'nurse' ? 'Antropometría' : u.role === 'nutritionist' ? 'Nutrición' : u.role === 'PENDIENTE' ? 'Pendiente App' : 'Médico'}
+                    {u.role === 'pharmacy' ? 'Farmacia' : 
+                     u.role === 'admin' ? 'Administrador' : 
+                     u.role === 'admission' ? 'Admisión' : 
+                     u.role === 'nurse' ? 'Antropometría' : 
+                     u.role === 'nutritionist' ? 'Nutrición' : 
+                     u.role === 'ecografista' ? 'Ecografía' :
+                     u.role === 'psiquiatra' ? 'Psiquiatría' :
+                     u.role === 'odontologo' ? 'Odontología' :
+                     u.role === 'PENDIENTE' ? 'Pendiente App' : 'Médico'}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -128,6 +139,9 @@ export default function UserManagement() {
                       <option value="pharmacy">FARMACIA</option>
                       <option value="admission">ADMISIÓN</option>
                       <option value="nutritionist">NUTRICIÓN</option>
+                      <option value="ecografista">ECOGRAFÍA</option>
+                      <option value="psiquiatra">PSIQUIATRÍA</option>
+                      <option value="odontologo">ODONTOLOGÍA</option>
                       <option value="admin">ADMIN</option>
                     </select>
                   </div>

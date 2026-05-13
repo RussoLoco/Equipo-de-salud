@@ -55,7 +55,8 @@
           }
         },
         "status": { "type": "string", "enum": ["Pendiente", "Entregado"] },
-        "location": { "type": "string" }
+        "location": { "type": "string" },
+        "deliveredAt": { "type": "string", "format": "date-time" }
       },
       "required": ["orderId", "date", "doctorId", "doctorName", "items", "status", "location"]
     },
@@ -65,7 +66,7 @@
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
-        "role": { "type": "string", "enum": ["doctor", "pharmacy", "admission", "admin"] },
+        "role": { "type": "string", "enum": ["doctor", "pharmacy", "admission", "nurse", "nutritionist", "ecografista", "psiquiatra", "odontologo", "admin"] },
         "name": { "type": "string" },
         "email": { "type": "string" },
         "isPending": { "type": "boolean" }
@@ -82,10 +83,12 @@
         "name": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" },
         "age": { "type": "string" },
+        "category": { "type": "string", "enum": ["Adulto", "Niño"] },
         "location": { "type": "string" },
         "phone": { "type": "string" },
-        "category": { "type": "string", "enum": ["Adulto", "Niño"] },
-        "clinicalHistory": { "type": "string" }
+        "clinicalHistory": { "type": "string" },
+        "guardianName": { "type": "string" },
+        "guardianRelation": { "type": "string", "enum": ["Madre", "Padre", "Familiar"] }
       },
       "required": ["id", "dni", "name", "createdAt"]
     },
@@ -98,6 +101,7 @@
         "patientId": { "type": "string" },
         "patientName": { "type": "string" },
         "patientDni": { "type": "string" },
+        "category": { "type": "string", "enum": ["Adulto", "Niño"] },
         "date": { "type": "string", "format": "date-time" },
         "status": { "type": "string", "enum": ["checkin", "espera", "atendiendo", "atendido"] },
         "attendingDoctorId": { "type": "string" },

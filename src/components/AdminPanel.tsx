@@ -15,6 +15,7 @@ export default function AdminPanel() {
   const [isWiping, setIsWiping] = useState(false);
   const [totalInventario, setTotalInventario] = useState<number | null>(null);
   const [totalPedidos, setTotalPedidos] = useState<number | null>(null);
+  const [totalPacientes, setTotalPacientes] = useState<number | null>(null);
   const [uploadHistory, setUploadHistory] = useState<UploadRecord[]>([]);
   const [success, setSuccess] = useState(false);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -39,6 +40,9 @@ export default function AdminPanel() {
       
       const ordCount = await getCountFromServer(collection(db, 'orders'));
       setTotalPedidos(ordCount.data().count);
+      
+      const patCount = await getCountFromServer(collection(db, 'patients'));
+      setTotalPacientes(patCount.data().count);
       
       await fetchHistory();
       setSuccess(true);
@@ -153,6 +157,29 @@ export default function AdminPanel() {
     }
   };
 
+  const performWipePatients = async () => {
+    let totalDeleted = 0;
+    try {
+      console.log('--- WIPE PATIENTS START ---');
+      while (true) {
+        const snap = await getDocsFromServer(query(collection(db, 'patients'), limit(500)));
+        if (snap.empty) break;
+        
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        
+        totalDeleted += snap.size;
+        if (totalDeleted > 20000) break;
+      }
+      setTotalPacientes(0);
+      return totalDeleted;
+    } catch (err) {
+      console.error('Error in performWipePatients:', err);
+      throw err;
+    }
+  };
+
   const handleWipeInventory = async () => {
     triggerConfirm(
       '¿BORRAR TODO EL INVENTARIO?',
@@ -201,10 +228,33 @@ export default function AdminPanel() {
     );
   };
 
+  const handleWipePatients = async () => {
+    triggerConfirm(
+      '¿BORRAR TODOS LOS PACIENTES?',
+      'Esta acción eliminará todos los registros de pacientes y sus antecedentes. Es irreversible.',
+      async () => {
+        setError(null);
+        setLoading(true);
+        try {
+          const count = await performWipePatients();
+          await refreshStats();
+          setSuccess(true);
+          setSuccessMsg(`Base de datos de pacientes vaciada: ${count} registros eliminados.`);
+          setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 5000);
+        } catch (err) {
+          setError('Error al borrar pacientes.');
+          handleFirestoreError(err, OperationType.DELETE, 'patients');
+        } finally {
+          setLoading(false);
+        }
+      }
+    );
+  };
+
   const handleTotalWipe = async () => {
     triggerConfirm(
       '¿LIMPIEZA TOTAL DEL SISTEMA?',
-      'Se borrará TODO: Inventario, Historial de pedidos y Cargas. Esta es la acción más crítica e irreversible.',
+      'Se borrará TODO: Inventario, Historial de pedidos, Pacientes y Cargas. Esta es la acción más crítica e irreversible.',
       async () => {
         setError(null);
         setSuccess(false);
@@ -212,6 +262,7 @@ export default function AdminPanel() {
         try {
           const invCount = await performWipeInventory();
           const ordCount = await performWipeOrders();
+          const patCount = await performWipePatients();
           
           const uploadsSnap = await getDocsFromServer(collection(db, 'uploads_history'));
           const uploadBatch = writeBatch(db);
@@ -220,7 +271,7 @@ export default function AdminPanel() {
 
           await refreshStats();
           setSuccess(true);
-          setSuccessMsg(`Limpieza total completa: ${invCount} registros de inventario y ${ordCount} de historial eliminados.`);
+          setSuccessMsg(`Limpieza total completa: ${invCount} registros de inventario, ${ordCount} de historial y ${patCount} pacientes eliminados.`);
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 8000);
         } catch (err) {
           setError('Error durante la limpieza total.');
@@ -645,6 +696,36 @@ export default function AdminPanel() {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                   {isWipingOrders ? 'Limpiando...' : 'Borrar Historial'}
+                </button>
+              </div>
+            </div>
+
+            <div className="p-6 rounded-2xl border border-blue-100 bg-blue-50/30 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3 text-blue-700">
+                  <Users className="h-5 w-5" />
+                  <h3 className="font-bold">Base de Datos de Pacientes</h3>
+                </div>
+                {totalPacientes !== null && (
+                  <span className={cn(
+                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest",
+                    totalPacientes === 0 ? "bg-slate-100 text-slate-400" : "bg-blue-600 text-white shadow-lg shadow-blue-100"
+                  )}>
+                    {totalPacientes} {totalPacientes === 1 ? 'Paciente' : 'Pacientes'}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Elimina todos los registros de pacientes y sus datos históricos. Precaución: esta acción es irreversible.
+              </p>
+              <div className="pt-2">
+                <button
+                  onClick={handleWipePatients}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition-all shadow-sm disabled:opacity-50"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Vaciar Pacientes
                 </button>
               </div>
             </div>

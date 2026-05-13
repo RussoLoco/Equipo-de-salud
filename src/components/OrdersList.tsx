@@ -88,7 +88,10 @@ export default function OrdersList() {
       const batch = writeBatch(db);
       
       const orderRef = doc(db, 'orders', order.orderId);
-      batch.update(orderRef, { status: 'Entregado' });
+      batch.update(orderRef, { 
+        status: 'Entregado',
+        deliveredAt: new Date().toISOString()
+      });
 
       // Optimization: Fetch all necessary drug stocks in ONE query (Avoid N+1)
       const drugIds = order.items.map(item => item.drugId);
@@ -230,7 +233,7 @@ export default function OrdersList() {
                       ) : (
                         <>
                           <ArrowRight className="h-4 w-4 text-blue-400" />
-                          PROCESAR DESPACHO
+                          TERMINAR Y ENTREGAR PEDIDO
                         </>
                       )}
                     </button>

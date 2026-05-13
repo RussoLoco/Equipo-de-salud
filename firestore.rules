@@ -57,9 +57,21 @@ service cloud.firestore {
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'nutritionist'))
       );
     }
+
+    function isSpecialist() {
+      return isSignedIn() && (
+        isSuper() || 
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'ecografista' || getUserRole() == 'psiquiatra' || getUserRole() == 'odontologo'))
+      );
+    }
+
+    function isRestrictedSpecialist() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+             (getUserRole() == 'ecografista' || getUserRole() == 'psiquiatra' || getUserRole() == 'odontologo');
+    }
     
     function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_ .\\-()#:]+$'); 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_ .+\\-()#:]+$'); 
     }
     
     function incoming() { return request.resource.data; }
@@ -70,13 +82,20 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'dni', 'name', 'createdAt'])
         && data.id is string
         && data.dni is string
-        && data.name is string;
+        && data.name is string
+        && (data.category == null || data.category in ['Adulto', 'Niño'])
+        && (data.guardianName == null || data.guardianName is string)
+        && (data.guardianRelation == null || data.guardianRelation in ['Madre', 'Padre', 'Familiar']);
     }
 
     function isValidVisit(data) {
-      let required = ['id', 'patientId', 'patientName', 'patientDni', 'date', 'status', 'vitals'];
-      return data.keys().hasAll(required)
-        && data.status in ['checkin', 'espera', 'atendiendo', 'atendido'];
+      // For updates, we might only have a subset of keys. 
+      // If we are performing an update, skip hasAll(required) and rely on individual field validation.
+      return (data.status == null || data.status in ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista', 'atendido'])
+        && (data.patientId == null || data.patientId is string)
+        && (data.id == null || data.id is string)
+        && (data.category == null || data.category in ['Adulto', 'Niño'])
+        && (data.serviceType == null || data.serviceType in ['pediatría', 'clínico', 'ecografía', 'psiquiatra', 'odontología', 'nutricionista']);
     }
 
     function isValidMedicine(data) {
@@ -90,8 +109,10 @@ service cloud.firestore {
 
     function isValidOrder(data) {
       let required = ['orderId', 'date', 'doctorId', 'doctorName', 'items', 'status', 'location', 'patientId', 'patientName', 'patientDni'];
+      // Allow for deliveredAt if it's an update, but create starts with 10
       return data.keys().hasAll(required)
-        && data.keys().size() == 10
+        && data.keys().size() >= 10
+        && data.keys().size() <= 11
         && data.orderId is string && data.orderId.size() <= 100
         && data.status in ['Pendiente', 'Entregado']
         && data.doctorId == request.auth.uid
@@ -113,20 +134,22 @@ service cloud.firestore {
 
     match /inventory/{drugId} {
       allow read: if isSignedIn();
-      allow create: if (isPharmacy() || isAdmin()) && isValidId(drugId) && isValidMedicine(incoming());
-      allow update: if (isPharmacy() || isAdmin()) && (
+      allow create: if !isRestrictedSpecialist() && (isPharmacy() || isAdmin()) && isValidId(drugId) && isValidMedicine(incoming());
+      allow update: if !isRestrictedSpecialist() && (isPharmacy() || isAdmin()) && (
           isValidMedicine(incoming()) || 
           incoming().diff(existing()).affectedKeys().hasOnly(['stock'])
         );
-      allow delete: if isPharmacy() || isDoctor() || isAdmin();
+      allow delete: if !isRestrictedSpecialist() && (isPharmacy() || isDoctor() || isAdmin());
     }
 
     match /orders/{orderId} {
       allow get: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
       allow list: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
-      allow create: if isDoctor() && isValidOrder(incoming()) && incoming().status == 'Pendiente';
-      allow update: if (isPharmacy() && incoming().status == 'Entregado' && existing().status == 'Pendiente' && incoming().diff(existing()).affectedKeys().hasOnly(['status']))
-        || (isDoctor() && existing().status == 'Pendiente' && isValidOrder(incoming()));
+      allow create: if !isRestrictedSpecialist() && isDoctor() && isValidOrder(incoming()) && incoming().status == 'Pendiente';
+      allow update: if !isRestrictedSpecialist() && (
+          (isPharmacy() && incoming().status == 'Entregado' && existing().status == 'Pendiente' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'deliveredAt']))
+          || (isDoctor() && existing().status == 'Pendiente' && isValidOrder(incoming()))
+        );
       allow delete: if isAdmin();
     }
     
@@ -142,25 +165,27 @@ service cloud.firestore {
     }
 
     match /patients/{patientId} {
-      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isAdmin() || isSuper());
+      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isSpecialist() || isAdmin() || isSuper());
       allow create: if (isAdmission() || isAdmin()) && isValidPatient(incoming());
-      allow update: if (isAdmission() || isDoctor() || isAdmin()) && (
+      allow update: if (isAdmission() || isDoctor() || isSpecialist() || isAdmin()) && (
           isValidPatient(incoming()) || 
           (incoming().diff(existing()).affectedKeys().hasOnly(['clinicalHistory']))
         );
       allow delete: if isAdmin();
       
       match /visits/{visitId} {
-        allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isAdmin() || isSuper());
-        allow create: if isNurse() && isValidVisit(incoming());
-        allow update: if (isDoctor() || isNurse() || isAdmin() || isSuper()) && isValidVisit(incoming());
+        allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isSpecialist() || isAdmin() || isSuper());
+        allow create: if (isNurse() || isAdmission()) && incoming().keys().hasAll(['id', 'patientId', 'patientName', 'patientDni', 'category', 'date', 'status', 'vitals']) && isValidVisit(incoming());
+        allow update: if (isDoctor() || isNurse() || isSpecialist() || isAdmin() || isSuper()) && isValidVisit(incoming());
+        allow delete: if isAdmin();
       }
     }
 
     match /visits/{visitId} {
-      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isAdmin() || isSuper());
-      allow create: if isNurse() && isValidVisit(incoming());
-      allow update: if (isDoctor() || isNurse() || isAdmin() || isSuper()) && isValidVisit(incoming());
+      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isSpecialist() || isAdmin() || isSuper());
+      allow create: if (isNurse() || isAdmission()) && incoming().keys().hasAll(['id', 'patientId', 'patientName', 'patientDni', 'category', 'date', 'status', 'vitals']) && isValidVisit(incoming());
+      allow update: if (isDoctor() || isNurse() || isSpecialist() || isAdmin() || isSuper()) && isValidVisit(incoming());
+      allow delete: if isAdmin();
     }
   }
 }

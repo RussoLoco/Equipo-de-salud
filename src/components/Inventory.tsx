@@ -27,9 +27,10 @@ interface InventoryProps {
   externalCart?: OrderItem[];
   setExternalCart?: React.Dispatch<React.SetStateAction<OrderItem[]>>;
   isSelectionMode?: boolean;
+  onConfirm?: () => void;
 }
 
-export default function Inventory({ externalCart, setExternalCart, isSelectionMode }: InventoryProps) {
+export default function Inventory({ externalCart, setExternalCart, isSelectionMode, onConfirm }: InventoryProps) {
   const { profile, activeRole } = useAuth();
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -276,9 +277,13 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
   }
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className={cn(
+      "space-y-6", 
+      !isSelectionMode && "pb-20",
+      isSelectionMode && "h-full flex flex-col space-y-4"
+    )}>
       {/* Search and Filters Bar */}
-      <div className="flex flex-col md:flex-row gap-4 items-center">
+      <div className="flex flex-col lg:flex-row gap-4 items-center shrink-0">
         <div className="flex-1 flex gap-4 w-full">
           <div className="relative flex-1 group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 group-focus-within:text-blue-500 transition-colors" />
@@ -349,39 +354,44 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total SKU</p>
-          <p className="text-3xl font-black text-slate-900">{totalSKU}</p>
+      {!isSelectionMode && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total SKU</p>
+            <p className="text-3xl font-black text-slate-900">{totalSKU}</p>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stock Bajo</p>
+            <p className="text-3xl font-black text-orange-500">{lowStockCount}</p>
+          </div>
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Agotados</p>
+            <p className="text-3xl font-black text-red-500">{outOfStockCount}</p>
+          </div>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stock Bajo</p>
-          <p className="text-3xl font-black text-orange-500">{lowStockCount}</p>
-        </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Agotados</p>
-          <p className="text-3xl font-black text-red-500">{outOfStockCount}</p>
-        </div>
-      </div>
+      )}
 
       {/* Inventory Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto hidden md:block">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest w-1/4">Medicamento / Acción</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Stock</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-32">Vencimiento</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-24">Tipo</th>
-                <th className="px-4 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center w-32">Ubicación</th>
-                <th className="px-6 py-5 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
+      <div className={cn(
+        "bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden flex flex-col",
+        isSelectionMode && "flex-1 min-h-0"
+      )}>
+        <div className="overflow-x-auto hidden md:block flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 scrollbar-track-transparent">
+          <table className={cn("w-full text-left border-separate border-spacing-0", isSelectionMode ? "min-w-[700px]" : "min-w-[900px]")}>
+            <thead className="sticky top-0 z-20 bg-slate-50 shadow-sm">
+              <tr className="border-b border-slate-200">
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-50 sticky left-0 z-30">Medicamento / Acción</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-24 bg-slate-50">Stock</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-32 bg-slate-50">Vencimiento</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-24 bg-slate-50">Tipo</th>
+                <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-32 bg-slate-50">Ubicación</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right bg-slate-50 sticky right-0 z-30">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredMedicines.map((med) => (
                 <tr key={med.drugId} className="group hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-5">
+                  <td className="px-6 py-5 sticky left-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-b border-slate-100">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
                         <Package className="h-5 w-5" />
@@ -398,7 +408,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-center">
+                  <td className="px-4 py-5 text-center border-b border-slate-100">
                     <div className={cn(
                       "inline-flex flex-col items-center justify-center px-4 py-1.5 rounded-xl border",
                       (med.stock === '0' || !med.stock) ? "bg-red-50 text-red-600 border-red-100" : 
@@ -407,13 +417,13 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                       <span className="text-xs font-black">{med.stock || '-'}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-center">
+                  <td className="px-4 py-5 text-center border-b border-slate-100">
                     <div className="flex items-center justify-center gap-2 text-slate-500">
                       <Calendar className="h-3.5 w-3.5" />
                       <span className="text-[10px] font-bold tracking-tight">{med.expirationDate || '---'}</span>
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-center">
+                  <td className="px-4 py-5 text-center border-b border-slate-100">
                     <span className={cn(
                       "text-[9px] font-bold px-2 py-1 rounded-lg uppercase tracking-widest",
                       med.category === 'Niño' ? "bg-pink-100 text-pink-600" : "bg-slate-100 text-slate-600"
@@ -421,31 +431,86 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                       {med.category === 'Niño' ? 'Pediátrico' : 'Adulto'}
                     </span>
                   </td>
-                  <td className="px-4 py-5 text-center">
+                  <td className="px-4 py-5 text-center border-b border-slate-100">
                     <div className="flex items-center justify-center gap-2 text-slate-400">
                       <Layers className="h-3.5 w-3.5" />
                       <span className="text-[10px] font-bold tracking-tight italic">{med.location || 'Vacío'}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-5 text-right">
+                  <td className="px-6 py-5 text-right sticky right-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-b border-slate-100">
                     <div className="flex items-center justify-end gap-3">
+                      {isSelectionMode && externalCart?.find(c => c.drugId === med.drugId) && (
+                        <div className="flex items-center gap-1.5 p-1 bg-blue-50/50 rounded-xl border border-blue-100 animate-in fade-in slide-in-from-right-2 duration-300">
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const item = (externalCart || []).find(c => c.drugId === med.drugId);
+                              if (!item) return;
+                              const q = parseInt(String(item.quantity).replace(/[^0-9]/g, '')) || 0;
+                              if (q <= 1) {
+                                setExternalCart?.((externalCart || []).filter(c => c.drugId !== med.drugId));
+                              } else {
+                                setExternalCart?.((externalCart || []).map(c => c.drugId === med.drugId ? {...c, quantity: String(q - 1)} : c));
+                              }
+                            }}
+                            className="p-1 hover:bg-white rounded-lg text-blue-400 transition-colors"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                          <input 
+                            type="text"
+                            value={(externalCart || []).find(c => c.drugId === med.drugId)?.quantity || "1"}
+                            onClick={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              setExternalCart?.((externalCart || []).map(c => c.drugId === med.drugId ? {...c, quantity: e.target.value} : c));
+                            }}
+                            className="w-12 bg-white border border-blue-200 rounded-lg text-[9px] font-black text-center text-slate-700 py-1 focus:ring-2 focus:ring-blue-100"
+                          />
+                          <button 
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const item = (externalCart || []).find(c => c.drugId === med.drugId);
+                              if (!item) return;
+                              const q = parseInt(String(item.quantity).replace(/[^0-9]/g, '')) || 0;
+                              setExternalCart?.((externalCart || []).map(c => c.drugId === med.drugId ? {...c, quantity: String(q + 1)} : c));
+                            }}
+                            className="p-1 hover:bg-white rounded-lg text-blue-400 transition-colors"
+                          >
+                            <Plus className="h-3 w-3" />
+                          </button>
+                        </div>
+                      )}
                       <div className="flex flex-col items-end">
-                        <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest mb-1 italic">Añadir a</span>
                         <button 
-                          onClick={() => addToCart(med)}
-                          disabled={med.stock === '0' || !med.stock}
+                          onClick={() => {
+                            if (isSelectionMode && setExternalCart) {
+                              if (externalCart?.find(c => c.drugId === med.drugId)) {
+                                setExternalCart(externalCart.filter(c => c.drugId !== med.drugId));
+                              } else {
+                                setExternalCart([...(externalCart || []), { 
+                                  drugId: med.drugId, 
+                                  drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug, 
+                                  quantity: "1", 
+                                  stockAtTime: med.stock 
+                                }]);
+                              }
+                            } else {
+                              addToCart(med);
+                            }
+                          }}
+                          disabled={(med.stock === '0' || !med.stock) && !externalCart?.find(c => c.drugId === med.drugId)}
                           className={cn(
                             "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 flex items-center gap-2",
-                            cart.find(c => c.drugId === med.drugId) 
+                            (externalCart || cart).find(c => c.drugId === med.drugId) 
                               ? "bg-blue-600 text-white hover:bg-blue-700" 
-                              : "bg-slate-900 text-white hover:bg-blue-600"
+                              : "bg-slate-900 text-white hover:bg-blue-600 shadow-slate-200"
                           )}
                         >
-                          {cart.find(c => c.drugId === med.drugId) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                          {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : 'Pedido'}
+                          {(externalCart || cart).find(c => c.drugId === med.drugId) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                          {(externalCart || cart).find(c => c.drugId === med.drugId) ? 'Agregado' : 'Pedido'}
                         </button>
                       </div>
-                      {(activeRole === 'pharmacy' || activeRole === 'admin' || activeRole === 'doctor') && (
+                      {(activeRole === 'pharmacy' || activeRole === 'admin') && (
                         <div className="flex items-center gap-1">
                           <button 
                             onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
@@ -472,7 +537,10 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
         </div>
 
         {/* Mobile Inventory List */}
-        <div className="md:hidden divide-y divide-slate-100">
+        <div className={cn(
+          "md:hidden divide-y divide-slate-100",
+          isSelectionMode && "flex-1 overflow-y-auto"
+        )}>
           {filteredMedicines.map((med) => (
             <div key={med.drugId} className="p-4 sm:p-6 space-y-4">
               <div className="flex justify-between items-start">
@@ -516,12 +584,14 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                   >
                     {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : '+ Pedido'}
                   </button>
-                  <button 
-                    onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
-                    className="p-2 text-slate-400 bg-slate-50 border border-slate-100 rounded-xl"
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </button>
+                  {(activeRole === 'pharmacy' || activeRole === 'admin') && (
+                    <button 
+                      onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
+                      className="p-2 text-slate-400 bg-slate-50 border border-slate-100 rounded-xl"
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -534,6 +604,34 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
           </div>
         )}
       </div>
+
+      {/* Selection Mode Footer */}
+      {isSelectionMode && (
+        <div className="p-6 border-t border-slate-100 bg-white shrink-0 flex flex-col sm:flex-row justify-between items-center gap-4 mt-auto rounded-b-[3rem]">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600 relative">
+              <ShoppingCart className="h-6 w-6" />
+              {cart.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-slate-900 text-[8px] font-black w-5 h-5 rounded-full border-2 border-white flex items-center justify-center text-white">
+                  {cart.length}
+                </span>
+              )}
+            </div>
+            <div>
+              <p className="text-[11px] font-black text-slate-900 uppercase tracking-widest leading-none mb-1">
+                {cart.length === 0 ? 'No hay medicamentos' : `${cart.length} Medicamentos Seleccionados`}
+              </p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tight">Prescripción en curso para el paciente</p>
+            </div>
+          </div>
+          <button 
+            onClick={onConfirm}
+            className="w-full sm:w-auto px-12 py-5 bg-slate-900 text-white rounded-[2rem] text-[10px] font-black uppercase tracking-[0.25em] hover:bg-blue-600 transition-all shadow-xl shadow-slate-100 active:scale-95"
+          >
+            Terminar y Confirmar Pedido
+          </button>
+        </div>
+      )}
 
       {/* Floating Cart Button */}
       {cart.length > 0 && !isSelectionMode && (
