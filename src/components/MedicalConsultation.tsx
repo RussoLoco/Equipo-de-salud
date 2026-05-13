@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatch } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatch, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { PatientVisit, MedicalEvolution, Medicine, OrderItem, Order } from '../types';
 import { useAuth } from './AuthProvider';
@@ -29,13 +29,86 @@ export default function MedicalConsultation() {
   const [cart, setCart] = useState<OrderItem[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'visits'), where('status', '==', 'espera'));
+    const q = query(collection(db, 'visits'), where('status', 'in', ['espera', 'atendiendo']), limit(100));
     const unsub = onSnapshot(q, (snap) => {
-      setPendingVisits(snap.docs.map(d => d.data() as PatientVisit));
+      const docs = snap.docs.map(d => d.data() as PatientVisit);
+      // Sort by date to keep queue order
+      setPendingVisits(docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits'));
     return () => unsub();
   }, []);
+
+  const claimVisit = async (visit: PatientVisit) => {
+    if (!profile) return;
+
+    // If already claimed by me in local state, just select
+    if (visit.status === 'atendiendo' && visit.attendingDoctorId === profile.uid) {
+      setSelectedVisit(visit);
+      return;
+    }
+
+    // If claimed by another doctor
+    if (visit.status === 'atendiendo' && visit.attendingDoctorId !== profile.uid) {
+      alert(`Esta consulta ya está siendo atendida por el Dr/a. ${visit.attendingDoctorName || 'otro profesional'}.`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const visitUpdate = {
+        status: 'atendiendo',
+        attendingDoctorId: profile.uid,
+        attendingDoctorName: profile.name
+      };
+
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'visits', visit.id), visitUpdate);
+      batch.update(doc(db, `patients/${visit.patientId}/visits`, visit.id), visitUpdate);
+
+      await batch.commit();
+      setSelectedVisit({ ...visit, ...visitUpdate });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const releaseVisit = async () => {
+    if (!selectedVisit || !profile) {
+      setSelectedVisit(null);
+      return;
+    }
+
+    // Only allow releasing if I'm the one attending (or admin)
+    if (selectedVisit.attendingDoctorId !== profile.uid) {
+      setSelectedVisit(null);
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const visitUpdate = {
+        status: 'espera',
+        attendingDoctorId: null,
+        attendingDoctorName: null
+      };
+
+      const batch = writeBatch(db);
+      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
+      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
+
+      await batch.commit();
+      setSelectedVisit(null);
+      setAntecedents('');
+      setEvolutionNotes('');
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   useEffect(() => {
     if (selectedVisit) {
@@ -168,44 +241,74 @@ export default function MedicalConsultation() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {pendingVisits.map(visit => (
-              <button 
-                key={visit.id}
-                onClick={() => setSelectedVisit(visit)}
-                className="group bg-white border border-slate-200 p-8 rounded-[2.5rem] text-left hover:border-blue-300 hover:shadow-2xl hover:shadow-blue-100 transition-all space-y-6"
-              >
-                <div className="flex justify-between items-start">
-                  <div className="w-14 h-14 bg-blue-50 rounded-[1.5rem] flex items-center justify-center text-blue-600 group-hover:scale-110 transition-transform">
-                    <User className="h-6 w-6" />
-                  </div>
-                  <div className="flex items-center gap-2 text-slate-300 text-[10px] font-bold">
-                    <Clock className="h-3.5 w-3.5" />
-                    {format(new Date(visit.date), 'HH:mm')}
-                  </div>
-                </div>
+            {pendingVisits.map(visit => {
+              const isAttendedByOther = visit.status === 'atendiendo' && visit.attendingDoctorId !== profile?.uid;
+              const isAttendedByMe = visit.status === 'atendiendo' && visit.attendingDoctorId === profile?.uid;
 
-                <div>
-                  <h3 className="text-lg font-black text-slate-900 line-clamp-1">{visit.patientName}</h3>
-                  <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DNI {visit.patientDni}</p>
-                </div>
+              return (
+                <button 
+                  key={visit.id}
+                  onClick={() => claimVisit(visit)}
+                  disabled={isAttendedByOther || isSubmitting}
+                  className={cn(
+                    "group relative bg-white border p-8 rounded-[2.5rem] text-left transition-all space-y-6 overflow-hidden",
+                    isAttendedByOther ? "opacity-60 border-amber-200 bg-amber-50/20 cursor-not-allowed" : "border-slate-200 hover:border-blue-300 hover:shadow-2xl hover:shadow-blue-100",
+                    isAttendedByMe && "border-emerald-200 bg-emerald-50/20 shadow-lg shadow-emerald-50"
+                  )}
+                >
+                  {isAttendedByOther && (
+                    <div className="absolute top-0 right-0 bg-amber-500 text-white px-4 py-1 text-[8px] font-black uppercase tracking-widest rounded-bl-2xl">
+                      En Atención
+                    </div>
+                  )}
 
-                <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Weight className="h-3.5 w-3.5 text-blue-400" />
-                    <span className="text-xs font-bold">{visit.vitals.weight}kg</span>
+                  <div className="flex justify-between items-start">
+                    <div className={cn(
+                      "w-14 h-14 rounded-[1.5rem] flex items-center justify-center transition-transform",
+                      isAttendedByOther ? "bg-amber-100 text-amber-600" : "bg-blue-50 text-blue-600 group-hover:scale-110"
+                    )}>
+                      <User className="h-6 w-6" />
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-300 text-[10px] font-bold">
+                      <Clock className="h-3.5 w-3.5" />
+                      {format(new Date(visit.date), 'HH:mm')}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 text-slate-500">
-                    <Activity className="h-3.5 w-3.5 text-purple-400" />
-                    <span className="text-xs font-bold">{visit.vitals.bloodPressure}</span>
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between group-hover:translate-x-2 transition-transform pt-2">
-                  <span className="text-[10px] font-black text-blue-600 uppercase tracking-widest">Llamar Paciente</span>
-                  <ArrowRight className="h-4 w-4 text-blue-600" />
-                </div>
-              </button>
-            ))}
+                  <div>
+                    <h3 className="text-lg font-black text-slate-900 line-clamp-1">{visit.patientName}</h3>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DNI {visit.patientDni}</p>
+                    {isAttendedByOther && (
+                      <p className="text-[10px] font-bold text-amber-600 mt-2 flex items-center gap-1.5">
+                        <Activity className="h-3 w-3" />
+                        Dr/a. {visit.attendingDoctorName}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3 pt-4 border-t border-slate-50">
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <Weight className="h-3.5 w-3.5 text-blue-400" />
+                      <span className="text-xs font-bold">{visit.vitals.weight}kg</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <Activity className="h-3.5 w-3.5 text-purple-400" />
+                      <span className="text-xs font-bold">{visit.vitals.bloodPressure}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between transition-transform pt-2">
+                    <span className={cn(
+                      "text-[10px] font-black uppercase tracking-widest",
+                      isAttendedByOther ? "text-amber-500" : "text-blue-600"
+                    )}>
+                      {isAttendedByOther ? 'Ocupado' : isAttendedByMe ? 'Continuar Atención' : 'Llamar Paciente'}
+                    </span>
+                    {!isAttendedByOther && <ArrowRight className="h-4 w-4 text-blue-600 group-hover:translate-x-1 transition-transform" />}
+                  </div>
+                </button>
+              );
+            })}
             {pendingVisits.length === 0 && (
               <div className="col-span-full py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
                 <div className="w-16 h-16 bg-white rounded-3xl mx-auto flex items-center justify-center text-slate-200 mb-4">
@@ -238,8 +341,9 @@ export default function MedicalConsultation() {
                   </div>
                 </div>
                 <button 
-                  onClick={() => setSelectedVisit(null)}
-                  className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all backdrop-blur-md"
+                  onClick={releaseVisit}
+                  disabled={isSubmitting}
+                  className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all backdrop-blur-md disabled:opacity-50"
                 >
                   Cancelar Consulta
                 </button>

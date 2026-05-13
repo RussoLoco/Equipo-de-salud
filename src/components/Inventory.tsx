@@ -80,7 +80,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
 
   useEffect(() => {
     // Cost Optimization: Limit initial fetch and order by drug name
-    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'), limit(300));
+    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'), limit(1000));
     const unsubInv = onSnapshot(qInv, (snapshot) => {
       setMedicines(snapshot.docs.map(doc => doc.data() as Medicine));
       setLoading(false);

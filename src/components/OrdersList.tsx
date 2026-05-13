@@ -10,42 +10,74 @@ import { cn } from '../lib/utils';
 
 export default function OrdersList() {
   const { profile, activeRole } = useAuth();
-  const [orders, setOrders] = useState<Order[]>([]);
+  const [pendingOrders, setPendingOrders] = useState<Order[]>([]);
+  const [deliveredOrders, setDeliveredOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const isPharmacy = activeRole === 'pharmacy';
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'admission'; // Admission usually doesn't see orders but let's keep it consistent
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'admission'; 
   const isDoctor = activeRole === 'doctor';
 
   useEffect(() => {
-    let q;
+    setLoading(true);
     const ordersCol = collection(db, 'orders');
     
-    // Cost Optimization: We can refine this to fetch only what is strictly necessary.
-    // However, since we want real-time updates for both, limit(100) is a safe balance.
+    // 1. Real-time Listener ONLY for PENDING orders (The active queue)
+    let pendingQuery;
     if (isDoctor && !isAdmin) {
-      q = query(
+      pendingQuery = query(
         ordersCol,
+        where('status', '==', 'Pendiente'),
         where('doctorId', '==', profile?.uid),
+        orderBy('date', 'desc'),
+        limit(50)
+      );
+    } else {
+      pendingQuery = query(
+        ordersCol,
+        where('status', '==', 'Pendiente'),
         orderBy('date', 'desc'),
         limit(100)
       );
-    } else {
-      q = query(
-        ordersCol,
-        orderBy('date', 'desc'),
-        limit(150)
-      );
     }
     
-    const unsub = onSnapshot(q, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data(), orderId: doc.id } as Order));
-      setOrders(docs);
+    const unsubPending = onSnapshot(pendingQuery, (snapshot) => {
+      setPendingOrders(snapshot.docs.map(doc => ({ ...doc.data(), orderId: doc.id } as Order)));
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'orders'));
+    }, (error) => handleFirestoreError(error, OperationType.GET, 'orders_pending'));
 
-    return () => unsub();
+    // 2. One-time fetch for DELIVERED orders (Historical - No real-time needed)
+    const fetchHistory = async () => {
+      let historyQuery;
+      if (isDoctor && !isAdmin) {
+        historyQuery = query(
+          ordersCol,
+          where('status', '==', 'Entregado'),
+          where('doctorId', '==', profile?.uid),
+          orderBy('date', 'desc'),
+          limit(20)
+        );
+      } else {
+        historyQuery = query(
+          ordersCol,
+          where('status', '==', 'Entregado'),
+          orderBy('date', 'desc'),
+          limit(30)
+        );
+      }
+      
+      try {
+        const snap = await getDocs(historyQuery);
+        setDeliveredOrders(snap.docs.map(doc => ({ ...doc.data() as Order, orderId: doc.id })));
+      } catch (err) {
+        console.error("Error fetching order history:", err);
+      }
+    };
+
+    fetchHistory();
+
+    return () => unsubPending();
   }, [isDoctor, isAdmin, profile?.uid]);
 
   const deliverOrder = async (order: Order) => {
@@ -100,9 +132,6 @@ export default function OrdersList() {
       </div>
     );
   }
-
-  const pendingOrders = orders.filter(o => o.status === 'Pendiente');
-  const deliveredOrders = orders.filter(o => o.status === 'Entregado');
 
   return (
     <div className="space-y-12">

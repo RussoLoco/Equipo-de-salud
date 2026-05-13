@@ -370,8 +370,8 @@ export default function AdminPanel() {
         const row = rows[i];
         if (!row || row.length < 2) continue;
 
-        // Current Structure:
-        // 0: ID | 1: Droga | 2: Marca | 3: Presentación | 4: Acción Ter. | 5: Dosis | 6: Stock/Cantidad | 7: Vencimiento | 8: Lab | 9: Tipo
+        // Structure (Columns A to K):
+        // 0: NRO | 1: DROGA | 2: NOMBRE COMERCIAL | 3: PRESENT. | 4: ACC.TERAP. | 5: DOSIS | 6: CANTIDAD | 7: VTO | 8: LABORATORIO | 9: CAJA | 10: TIPO
         
         let drugId = String(row[0] || '').trim();
         let drug = String(row[1] || '').trim();
@@ -379,10 +379,11 @@ export default function AdminPanel() {
         let presentation = String(row[3] || '').trim();
         let therapeuticAction = String(row[4] || '').trim();
         let dosage = String(row[5] || '').trim();
-        let stock = String(row[6] || '').trim(); // "31BX8C" etc.
+        let stock = String(row[6] || '').trim(); 
         let expirationDate = formatVal(row[7]);
         let laboratory = String(row[8] || '').trim();
-        let categoryRaw = String(row[9] || '').toLowerCase();
+        let location = String(row[9] || '').trim();
+        let categoryRaw = String(row[10] || '').toLowerCase();
 
         if (!drug && !brandName) {
           console.log(`Fila ${i} saltada: sin droga ni nombre comercial.`);
@@ -401,8 +402,8 @@ export default function AdminPanel() {
           dosage: dosage || '',
           stock: stock,
           expirationDate: expirationDate || '',
-          laboratory: laboratory || '',
-          location: '', // Leave empty as requested
+          laboratory: laboratory || 'GENERICO',
+          location: location || '',
           category: (categoryRaw.includes('niño') || categoryRaw.includes('ped') || categoryRaw.includes('susp') ? 'Niño' : 'Adulto'),
           uploadId
         };
@@ -720,9 +721,9 @@ export default function AdminPanel() {
                       <span className="text-[10px] font-bold text-blue-600">Tip</span>
                     </div>
                     <div className="space-y-1">
-                      <h4 className="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Columnas Requeridas (en orden)</h4>
+                      <h4 className="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Columnas Requeridas (A-K)</h4>
                       <p className="text-[11px] text-slate-500 font-mono leading-relaxed">
-                        ID | Droga | Marca | Presentación | Acción | Dosis | Stock | Vencimiento | Laboratorio | Tipo
+                        NRO | DROGA | COMERCIAL | PRESENT | ACCIÓN | DOSIS | CANT | VTO | LAB | CAJA | TIPO
                       </p>
                     </div>
                 </div>

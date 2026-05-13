@@ -31,6 +31,8 @@ export interface Patient {
   createdAt: string;
   age?: string;
   location?: string;
+  phone?: string;
+  category?: 'Adulto' | 'Niño';
   clinicalHistory?: string; // Nuevo: Historia clínica permanente
 }
 
@@ -59,10 +61,12 @@ export interface PatientVisit {
   age?: string;
   location?: string;
   date: string;
-  status: 'espera' | 'atendido';
+  status: 'espera' | 'atendiendo' | 'atendido';
   vitals: Vitals;
   evolution?: MedicalEvolution;
   orderIds?: string[]; // IDs de pedidos vinculados
+  attendingDoctorId?: string;
+  attendingDoctorName?: string;
 }
 
 export interface UploadRecord {

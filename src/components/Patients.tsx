@@ -13,7 +13,7 @@ export default function Patients() {
   const [patients, setPatients] = useState<Patient[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isRegistering, setIsRegistering] = useState(false);
-  const [newPatient, setNewPatient] = useState({ dni: '', name: '', age: '', location: '' });
+  const [newPatient, setNewPatient] = useState({ dni: '', name: '', age: '', location: '', phone: '', category: 'Adulto' as 'Adulto' | 'Niño' });
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
   const [isStartingVisit, setIsStartingVisit] = useState(false);
@@ -75,11 +75,13 @@ export default function Patients() {
         name: newPatient.name,
         age: newPatient.age,
         location: newPatient.location,
+        phone: newPatient.phone,
+        category: newPatient.category,
         createdAt: new Date().toISOString()
       };
-      await setDoc(docRef, patientData);
+      await setDoc(doc(db, 'patients', id), patientData);
       setIsRegistering(false);
-      setNewPatient({ dni: '', name: '', age: '', location: '' });
+      setNewPatient({ dni: '', name: '', age: '', location: '', phone: '', category: 'Adulto' });
       setSelectedPatient(patientData);
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'patients');
@@ -224,12 +226,18 @@ export default function Patients() {
                   </div>
                   <div>
                     <p className={cn("text-xs font-bold", selectedPatient?.id === p.id ? "text-white" : "text-slate-800")}>{p.name}</p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                        <p className={cn("text-[8px] font-black uppercase tracking-widest", selectedPatient?.id === p.id ? "text-slate-400" : "text-slate-300")}>DNI {p.dni}</p>
                        {p.location && (
                          <>
-                           <span className={cn("w-0.5 h-0.5 rounded-full", selectedPatient?.id === p.id ? "bg-slate-500" : "bg-slate-200")} />
-                           <p className={cn("text-[8px] font-black uppercase tracking-widest", selectedPatient?.id === p.id ? "text-slate-400" : "text-slate-300")}>{p.location}</p>
+                           <span className={cn("w-0.5 h-0.5 rounded-full shrink-0", selectedPatient?.id === p.id ? "bg-slate-500" : "bg-slate-200")} />
+                           <p className={cn("text-[8px] font-black uppercase tracking-widest truncate max-w-[80px]", selectedPatient?.id === p.id ? "text-slate-400" : "text-slate-300")}>{p.location}</p>
+                         </>
+                       )}
+                       {p.category && (
+                         <>
+                           <span className={cn("w-0.5 h-0.5 rounded-full shrink-0", selectedPatient?.id === p.id ? "bg-slate-500" : "bg-slate-200")} />
+                           <p className={cn("text-[8px] font-black uppercase tracking-widest", selectedPatient?.id === p.id ? "text-slate-400" : "text-slate-300")}>{p.category}</p>
                          </>
                        )}
                     </div>
@@ -274,23 +282,37 @@ export default function Patients() {
                     <User className="h-10 w-10" />
                   </div>
                   <div>
-                    <h2 className="text-3xl font-black text-slate-900 tracking-tight">{selectedPatient.name}</h2>
-                    <div className="flex items-center gap-4 mt-1">
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">DNI: {selectedPatient.dni}</span>
+                    <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">{selectedPatient.name}</h2>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-2">
+                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">DNI: {selectedPatient.dni}</span>
                       {selectedPatient.age && (
-                        <>
-                          <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Edad: {selectedPatient.age} años</span>
-                        </>
+                        <div className="flex items-center gap-2">
+                          <span className="w-1 h-1 bg-slate-200 rounded-full shrink-0" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Edad: {selectedPatient.age} años</span>
+                        </div>
                       )}
                       {selectedPatient.location && (
-                        <>
-                          <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Localidad: {selectedPatient.location}</span>
-                        </>
+                        <div className="flex items-center gap-2">
+                          <span className="w-1 h-1 bg-slate-200 rounded-full shrink-0" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Localidad: {selectedPatient.location}</span>
+                        </div>
                       )}
-                      <span className="w-1 h-1 bg-slate-200 rounded-full" />
-                      <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Registrado: {format(new Date(selectedPatient.createdAt), 'dd MMMM yyyy', { locale: es })}</span>
+                      {selectedPatient.phone && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-1 h-1 bg-slate-200 rounded-full shrink-0" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Cel: {selectedPatient.phone}</span>
+                        </div>
+                      )}
+                      {selectedPatient.category && (
+                        <div className="flex items-center gap-2">
+                          <span className="w-1 h-1 bg-slate-200 rounded-full shrink-0" />
+                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Cat: {selectedPatient.category}</span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="w-1 h-1 bg-slate-200 rounded-full shrink-0" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap">Registrado: {format(new Date(selectedPatient.createdAt), 'dd/MM/yyyy', { locale: es })}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -409,9 +431,13 @@ export default function Patients() {
                               </span>
                               <span className={cn(
                                 "text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full",
-                                visit.status === 'atendido' ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                                visit.status === 'atendido' ? "bg-emerald-100 text-emerald-700" : 
+                                visit.status === 'atendiendo' ? "bg-blue-100 text-blue-700" : 
+                                "bg-amber-100 text-amber-700"
                               )}>
-                                {visit.status === 'atendido' ? 'Atendido' : 'En Espera'}
+                                {visit.status === 'atendido' ? 'Atendido' : 
+                                 visit.status === 'atendiendo' ? 'En Atención' : 
+                                 'En Espera'}
                               </span>
                             </div>
 
@@ -547,7 +573,7 @@ export default function Patients() {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Edad</label>
                     <input 
@@ -567,6 +593,34 @@ export default function Patients() {
                       value={newPatient.location}
                       onChange={e => setNewPatient({...newPatient, location: e.target.value})}
                     />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Nro. de Celular</label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej: 3764123456"
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 transition-all"
+                      value={newPatient.phone}
+                      onChange={e => setNewPatient({...newPatient, phone: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Categoría</label>
+                    <div className="relative">
+                      <select 
+                        className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100 transition-all appearance-none cursor-pointer"
+                        value={newPatient.category}
+                        onChange={e => setNewPatient({...newPatient, category: e.target.value as 'Adulto' | 'Niño'})}
+                      >
+                        <option value="Adulto">Adulto</option>
+                        <option value="Niño">Niño</option>
+                      </select>
+                      <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                        <ArrowRight className="h-3 w-3 rotate-90" />
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
