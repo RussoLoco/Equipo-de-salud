@@ -83,6 +83,8 @@
         "createdAt": { "type": "string", "format": "date-time" },
         "age": { "type": "string" },
         "location": { "type": "string" },
+        "phone": { "type": "string" },
+        "category": { "type": "string", "enum": ["Adulto", "Niño"] },
         "clinicalHistory": { "type": "string" }
       },
       "required": ["id", "dni", "name", "createdAt"]
@@ -97,7 +99,9 @@
         "patientName": { "type": "string" },
         "patientDni": { "type": "string" },
         "date": { "type": "string", "format": "date-time" },
-        "status": { "type": "string", "enum": ["espera", "atendido"] },
+        "status": { "type": "string", "enum": ["espera", "atendiendo", "atendido"] },
+        "attendingDoctorId": { "type": "string" },
+        "attendingDoctorName": { "type": "string" },
         "vitals": {
           "type": "object",
           "properties": {
