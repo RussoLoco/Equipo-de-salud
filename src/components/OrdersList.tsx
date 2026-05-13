@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, where, orderBy, writeBatch, doc, getDocs
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Order, Medicine } from '../types';
 import { useAuth } from './AuthProvider';
-import { CheckCircle, Clock, MapPin, User, Pill, ArrowRight, Loader2, ShoppingBag } from 'lucide-react';
+import { CheckCircle, Clock, MapPin, User, Pill, ArrowRight, Loader2, ShoppingBag, ClipboardList, History } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '../lib/utils';
@@ -43,7 +43,9 @@ export default function OrdersList() {
     }
     
     const unsubPending = onSnapshot(pendingQuery, (snapshot) => {
-      setPendingOrders(snapshot.docs.map(doc => ({ ...doc.data(), orderId: doc.id } as Order)));
+      const docs = snapshot.docs.map(doc => ({ ...doc.data() as Order, orderId: doc.id }));
+      // Extra safety: sort by date locally too
+      setPendingOrders(docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
       setLoading(false);
     }, (error) => handleFirestoreError(error, OperationType.GET, 'orders_pending'));
 
@@ -136,67 +138,64 @@ export default function OrdersList() {
   return (
     <div className="space-y-12">
       <section>
-        <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-3">
-              <Clock className="text-amber-500 h-5 w-5" />
-              Cola de Despacho
-            </h2>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-[0.2em] mt-1">Pedidos en espera de validación</p>
+        <div className="flex items-center gap-3 mb-8 ml-2">
+          <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-600">
+            <ClipboardList className="h-6 w-6" />
           </div>
-          <span className="self-start sm:self-center rounded-lg bg-amber-50 px-4 py-1.5 text-xs font-bold text-amber-700 border border-amber-100 shadow-sm">
-            {pendingOrders.length} Pendientes
-          </span>
+          <div>
+            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Pedidos Pendientes</h2>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Cola de Farmacia</p>
+          </div>
         </div>
 
         {pendingOrders.length === 0 ? (
-          <div className="rounded-2xl border-2 border-dashed border-slate-200 p-8 sm:p-16 text-center">
+          <div className="rounded-[3rem] border-2 border-dashed border-slate-200 p-20 text-center bg-slate-50">
             <ShoppingBag className="mx-auto h-12 w-12 text-slate-200 mb-4" />
-            <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Sin actividad pendiente</p>
+            <p className="text-slate-400 font-black uppercase tracking-widest text-[10px]">Sin pedidos pendientes</p>
           </div>
         ) : (
-          <div className="grid gap-6 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-            {pendingOrders.map((order) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            {pendingOrders.map((order, index) => (
               <div
                 key={order.orderId}
-                className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md border-t-4 border-t-amber-400"
+                className="group relative bg-white border border-slate-200 p-8 rounded-[2.5rem] hover:border-amber-300 hover:shadow-2xl hover:shadow-amber-100 transition-all space-y-6 overflow-hidden"
               >
-                <div className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-widest">
-                      {format(new Date(order.date), 'HH:mm', { locale: es })}
-                    </span>
-                    <span className="text-[10px] font-mono font-bold text-blue-500 bg-blue-50 px-2 py-0.5 rounded">FOLIO: {order.orderId.slice(-6).toUpperCase()}</span>
+                <div className="absolute top-0 right-0 bg-slate-900 text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-bl-2xl">
+                  Turno #{index + 1}
+                </div>
+                <div className="flex justify-between items-start">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-[1.2rem] flex items-center justify-center text-blue-600">
+                      <User className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-black text-slate-900 line-clamp-1">{order.patientName || 'Paciente Anónimo'}</h3>
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DNI {order.patientDni || '---'}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] font-bold text-slate-300">{format(new Date(order.date), 'HH:mm')}</span>
+                    <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-1.5 py-0.5 rounded uppercase mt-1">Ref: {order.orderId.slice(-6)}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-4 border-t border-slate-50">
+                  <div className="flex items-center gap-2 mb-2">
+                    <History className="h-3 w-3 text-slate-400" />
+                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-tighter">Médico: {order.doctorName}</p>
                   </div>
                   
-                  <div className="mb-6">
-                    <div className="flex flex-col gap-2 mb-4 p-3 bg-blue-50/50 rounded-xl border border-blue-100">
-                      <div className="flex items-center gap-2">
-                        <User className="h-3 w-3 text-blue-600" />
-                        <p className="text-[10px] font-black text-slate-800 uppercase tracking-tighter">Paciente: {order.patientName || 'No asignado'}</p>
+                  <div className="space-y-2">
+                    {order.items.map((item, idx) => (
+                      <div key={idx} className="flex justify-between items-center bg-slate-50 p-3 rounded-2xl group-hover:bg-amber-50/50 transition-colors">
+                        <span className="text-xs font-bold text-slate-700">{item.drugName}</span>
+                        <span className="text-[10px] font-black bg-white px-2 py-1 border border-slate-100 rounded-lg shadow-sm group-hover:border-amber-200">
+                          x{item.quantity}
+                        </span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle className="h-3 w-3 text-slate-400" />
-                        <p className="text-[9px] font-bold text-slate-500 uppercase tracking-widest">DNI: {order.patientDni || '---'}</p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 mb-3">
-                      <div className="h-6 w-6 rounded bg-blue-50 flex items-center justify-center border border-blue-100">
-                        <User className="h-3 w-3 text-blue-500" />
-                      </div>
-                      <p className="text-[10px] font-black text-slate-800 uppercase tracking-tighter">Médico: {order.doctorName}</p>
-                    </div>
-                    <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.15em] mb-2 px-1">Prescripción</h3>
-                    <div className="space-y-2">
-                       {order.items.map((item, idx) => (
-                         <div key={idx} className="flex justify-between items-center bg-slate-50 p-2 rounded-lg border border-slate-100">
-                           <span className="text-[11px] font-bold text-slate-700">{item.drugName}</span>
-                           <span className="text-[10px] font-mono font-bold bg-white px-2 py-0.5 border border-slate-200 rounded">x{item.quantity}</span>
-                         </div>
-                       ))}
-                    </div>
+                    ))}
                   </div>
+                </div>
                   
                   <div className="space-y-4 mb-8 pt-4 border-t border-slate-50">
                     <div className="flex items-center gap-3">
@@ -242,7 +241,6 @@ export default function OrdersList() {
                     </div>
                   )}
                 </div>
-              </div>
             ))}
           </div>
         )}

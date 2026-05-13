@@ -29,11 +29,23 @@ export default function MedicalConsultation() {
   const [cart, setCart] = useState<OrderItem[]>([]);
 
   useEffect(() => {
-    const q = query(collection(db, 'visits'), where('status', 'in', ['espera', 'atendiendo']), limit(100));
+    // Inicio del día actual (00:00) para reiniciar turnos diariamente
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const timeLimit = today.toISOString();
+
+    const q = query(
+      collection(db, 'visits'), 
+      where('status', 'in', ['espera', 'atendiendo']),
+      where('date', '>=', timeLimit),
+      limit(100)
+    );
+    
     const unsub = onSnapshot(q, (snap) => {
       const docs = snap.docs.map(d => d.data() as PatientVisit);
-      // Sort by date to keep queue order
-      setPendingVisits(docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+      // Ordenamos por fecha de llegada
+      const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      setPendingVisits(sorted);
       setLoading(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits'));
     return () => unsub();
@@ -241,9 +253,10 @@ export default function MedicalConsultation() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-            {pendingVisits.map(visit => {
+            {pendingVisits.map((visit, index) => {
               const isAttendedByOther = visit.status === 'atendiendo' && visit.attendingDoctorId !== profile?.uid;
               const isAttendedByMe = visit.status === 'atendiendo' && visit.attendingDoctorId === profile?.uid;
+              const turnNumber = index + 1;
 
               return (
                 <button 
@@ -256,9 +269,13 @@ export default function MedicalConsultation() {
                     isAttendedByMe && "border-emerald-200 bg-emerald-50/20 shadow-lg shadow-emerald-50"
                   )}
                 >
-                  {isAttendedByOther && (
+                  {isAttendedByOther ? (
                     <div className="absolute top-0 right-0 bg-amber-500 text-white px-4 py-1 text-[8px] font-black uppercase tracking-widest rounded-bl-2xl">
                       En Atención
+                    </div>
+                  ) : (
+                    <div className="absolute top-0 right-0 bg-slate-900 text-white px-4 py-1 text-[10px] font-black uppercase tracking-widest rounded-bl-2xl">
+                      Turno #{turnNumber}
                     </div>
                   )}
 

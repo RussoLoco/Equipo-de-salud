@@ -76,7 +76,7 @@ service cloud.firestore {
     function isValidVisit(data) {
       let required = ['id', 'patientId', 'patientName', 'patientDni', 'date', 'status', 'vitals'];
       return data.keys().hasAll(required)
-        && data.status in ['espera', 'atendiendo', 'atendido'];
+        && data.status in ['checkin', 'espera', 'atendiendo', 'atendido'];
     }
 
     function isValidMedicine(data) {

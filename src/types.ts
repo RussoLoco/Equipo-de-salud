@@ -61,7 +61,7 @@ export interface PatientVisit {
   age?: string;
   location?: string;
   date: string;
-  status: 'espera' | 'atendiendo' | 'atendido';
+  status: 'checkin' | 'espera' | 'atendiendo' | 'atendido';
   vitals: Vitals;
   evolution?: MedicalEvolution;
   orderIds?: string[]; // IDs de pedidos vinculados

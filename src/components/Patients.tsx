@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, setDoc, getDoc, addDoc, orderBy, where, limit, deleteDoc } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, setDoc, getDoc, addDoc, orderBy, where, limit, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Patient, PatientVisit, Vitals, UserProfile } from '../types';
 import { useAuth } from './AuthProvider';
@@ -16,7 +16,10 @@ export default function Patients() {
   const [newPatient, setNewPatient] = useState({ dni: '', name: '', age: '', location: '', phone: '', category: 'Adulto' as 'Adulto' | 'Niño' });
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
+  const [dailyQueue, setDailyQueue] = useState<PatientVisit[]>([]);
+  const [loadingQueue, setLoadingQueue] = useState(true);
   const [isStartingVisit, setIsStartingVisit] = useState(false);
+  const [selectedVisitForVitals, setSelectedVisitForVitals] = useState<PatientVisit | null>(null);
   const [isEditingHistory, setIsEditingHistory] = useState(false);
   const [editingHistoryText, setEditingHistoryText] = useState('');
   const [vitals, setVitals] = useState<Vitals>({
@@ -30,11 +33,33 @@ export default function Patients() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    const q = query(collection(db, 'patients'), orderBy('name'), limit(50));
-    const unsub = onSnapshot(q, (snap) => {
+    // Inicio del día actual (00:00) para reiniciar turnos diariamente
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const timeLimit = today.toISOString();
+
+    const qQueue = query(
+      collection(db, 'visits'),
+      where('status', '==', 'checkin'),
+      where('date', '>=', timeLimit),
+      orderBy('date', 'asc'),
+      limit(100)
+    );
+
+    const unsubQueue = onSnapshot(qQueue, (snap) => {
+      setDailyQueue(snap.docs.map(d => d.data() as PatientVisit));
+      setLoadingQueue(false);
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits_queue'));
+
+    const qPatients = query(collection(db, 'patients'), orderBy('name'), limit(100));
+    const unsubPatients = onSnapshot(qPatients, (snap) => {
       setPatients(snap.docs.map(d => d.data() as Patient));
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'patients'));
-    return () => unsub();
+
+    return () => {
+      unsubQueue();
+      unsubPatients();
+    };
   }, []);
 
   const fetchHistory = (patientId: string) => {
@@ -63,7 +88,7 @@ export default function Patients() {
     if (!newPatient.dni || !newPatient.name) return;
     setIsSubmitting(true);
     try {
-      const id = newPatient.dni; // We can use DNI as ID if unique
+      const id = newPatient.dni; 
       const docRef = doc(db, 'patients', id);
       const docSnap = await getDoc(docRef);
       if (docSnap.exists()) {
@@ -79,7 +104,35 @@ export default function Patients() {
         category: newPatient.category,
         createdAt: new Date().toISOString()
       };
-      await setDoc(doc(db, 'patients', id), patientData);
+      
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'patients', id), patientData);
+      
+      // Auto-checkin on registration
+      const visitId = doc(collection(db, 'visits')).id;
+      const visitData: PatientVisit = {
+        id: visitId,
+        patientId: id,
+        patientName: newPatient.name,
+        patientDni: newPatient.dni,
+        age: newPatient.age || '',
+        location: newPatient.location || '',
+        date: new Date().toISOString(),
+        status: 'checkin',
+        vitals: {
+          date: new Date().toISOString(),
+          weight: '',
+          height: '',
+          temperature: '',
+          bloodPressure: '',
+          recordedBy: profile?.uid || ''
+        }
+      };
+      batch.set(doc(db, 'visits', visitId), visitData);
+      batch.set(doc(db, `patients/${id}/visits`, visitId), visitData);
+
+      await batch.commit();
+      
       setIsRegistering(false);
       setNewPatient({ dni: '', name: '', age: '', location: '', phone: '', category: 'Adulto' });
       setSelectedPatient(patientData);
@@ -90,21 +143,76 @@ export default function Patients() {
     }
   };
 
+  const handleCheckIn = async (patient: Patient) => {
+    if (!profile) return;
+    setIsSubmitting(true);
+    try {
+      // Check if already has a pending visit in the last 12 hours to avoid duplicates
+      const today = new Date();
+      today.setHours(today.getHours() - 12);
+      const q = query(
+        collection(db, 'visits'),
+        where('patientId', '==', patient.id),
+        where('status', 'in', ['checkin', 'espera', 'atendiendo']),
+        where('date', '>=', today.toISOString())
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        alert('Este paciente ya tiene una consulta en curso hoy.');
+        return;
+      }
+
+      const visitId = doc(collection(db, 'visits')).id;
+      const visitData: PatientVisit = {
+        id: visitId,
+        patientId: patient.id,
+        patientName: patient.name,
+        patientDni: patient.dni,
+        age: patient.age || '',
+        location: patient.location || '',
+        date: new Date().toISOString(),
+        status: 'checkin',
+        vitals: {
+          date: new Date().toISOString(),
+          weight: '',
+          height: '',
+          temperature: '',
+          bloodPressure: '',
+          recordedBy: profile.uid
+        }
+      };
+
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'visits', visitId), visitData);
+      batch.set(doc(db, `patients/${patient.id}/visits`, visitId), visitData);
+      await batch.commit();
+
+      alert(`Turno asignado correctamente para ${patient.name}. Pase a Biometría.`);
+    } catch (err) {
+      handleFirestoreError(err, OperationType.CREATE, 'visits_checkin');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleStartVisit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedPatient || !profile) return;
+    
+    // Si estamos procesando un turno existente de la cola
+    const visitId = selectedVisitForVitals?.id || doc(collection(db, 'visits')).id;
+    
     setIsSubmitting(true);
     try {
-      const visitId = doc(collection(db, 'visits')).id;
       const visitData: PatientVisit = {
         id: visitId,
         patientId: selectedPatient.id,
         patientName: selectedPatient.name,
         patientDni: selectedPatient.dni,
-        age: selectedPatient.age,
-        location: selectedPatient.location,
-        date: new Date().toISOString(),
-        status: 'espera',
+        age: selectedPatient.age || '',
+        location: selectedPatient.location || '',
+        date: selectedVisitForVitals?.date || new Date().toISOString(),
+        status: 'espera', // Pasa a espera (sala de espera médica)
         vitals: {
           ...vitals,
           date: new Date().toISOString(),
@@ -112,11 +220,13 @@ export default function Patients() {
         }
       };
 
-      // Atomic write to both paths
-      await setDoc(doc(db, `patients/${selectedPatient.id}/visits`, visitId), visitData);
-      await setDoc(doc(db, 'visits', visitId), visitData);
+      const batch = writeBatch(db);
+      batch.set(doc(db, 'visits', visitId), visitData, { merge: true });
+      batch.set(doc(db, `patients/${selectedPatient.id}/visits`, visitId), visitData, { merge: true });
+      await batch.commit();
 
       setIsStartingVisit(false);
+      setSelectedVisitForVitals(null);
       setVitals({
         date: '',
         weight: '',
@@ -126,7 +236,7 @@ export default function Patients() {
         recordedBy: ''
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, 'visits_vitals');
     } finally {
       setIsSubmitting(false);
     }
@@ -200,6 +310,53 @@ export default function Patients() {
           </button>
         )}
       </div>
+
+      {(canEditVitals || isAdmission) && dailyQueue.length > 0 && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-500">
+          <div className="flex items-center justify-between ml-2">
+            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+              <ClipboardList className="h-3.5 w-3.5" />
+              Cola de Biometría (Turnos del Día)
+            </h3>
+            <span className="bg-blue-100 text-blue-600 text-[8px] font-black px-2 py-0.5 rounded-full uppercase tracking-widest">
+              {dailyQueue.length} Pendientes
+            </span>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            {dailyQueue.map((visit, index) => (
+              <button 
+                key={visit.id}
+                onClick={() => {
+                  const p = patients.find(pat => pat.id === visit.patientId);
+                  if (p) {
+                    setSelectedPatient(p);
+                    setSelectedVisitForVitals(visit);
+                    setIsStartingVisit(true);
+                  }
+                }}
+                className="group relative bg-white border border-slate-200 p-6 rounded-[2rem] text-left hover:border-blue-300 hover:shadow-xl transition-all space-y-4 overflow-hidden"
+              >
+                <div className="absolute top-0 right-0 bg-slate-900 text-white px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-bl-xl">
+                  Turno #{index + 1}
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 line-clamp-1">{visit.patientName}</h4>
+                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{format(new Date(visit.date), 'HH:mm')}</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2">
+                   <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest">Tomar Biometría</span>
+                   <ArrowRight className="h-3.5 w-3.5 text-blue-600 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
         {/* Patient List */}
@@ -336,10 +493,23 @@ export default function Patients() {
                   )}
                   {canEditVitals && (
                     <button 
-                      onClick={() => setIsStartingVisit(true)}
+                      onClick={() => {
+                        setSelectedVisitForVitals(null);
+                        setIsStartingVisit(true);
+                      }}
                       className="w-full sm:w-auto px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-600 transition-all shadow-xl shadow-slate-200"
                     >
                       Nueva Visita (Biometría)
+                    </button>
+                  )}
+                  {isAdmission && (
+                    <button 
+                      onClick={() => handleCheckIn(selectedPatient)}
+                      disabled={isSubmitting}
+                      className="w-full sm:w-auto px-8 py-4 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-all shadow-xl shadow-blue-100 flex items-center justify-center gap-2"
+                    >
+                      <ArrowRight className="h-4 w-4" />
+                      Ingresar a Consulta
                     </button>
                   )}
                 </div>
@@ -645,7 +815,9 @@ export default function Patients() {
             <form onSubmit={handleStartVisit} className="p-10">
               <div className="flex justify-between items-start mb-8">
                 <div>
-                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Nueva Visita</h3>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">
+                    {selectedVisitForVitals ? 'Procesar Turno' : 'Nueva Visita'}
+                  </h3>
                   <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Biometría y signos vitales</p>
                 </div>
                 <button type="button" onClick={() => setIsStartingVisit(false)} className="p-2 hover:bg-slate-50 rounded-full transition-colors">
@@ -736,7 +908,7 @@ export default function Patients() {
                   className="flex-[2] py-4 bg-slate-900 text-white rounded-2xl font-black uppercase tracking-widest text-[10px] hover:bg-blue-600 transition-all shadow-xl shadow-slate-200 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {isSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <ClipboardList className="h-3 w-3" />}
-                  Finalizar Admisión
+                  {selectedVisitForVitals ? 'Confirmar Biometría' : 'Finalizar Admisión'}
                 </button>
               </div>
             </form>
