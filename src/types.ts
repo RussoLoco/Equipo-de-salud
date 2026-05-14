@@ -4,9 +4,12 @@ export interface UserProfile {
   uid: string;
   email: string;
   name: string;
+  lastName?: string;
+  photoURL?: string;
   role: UserRole;
   phone?: string;
   isPending?: boolean;
+  profileCompleted?: boolean;
 }
 
 export interface Medicine {
@@ -65,12 +68,14 @@ export interface PatientVisit {
   category?: 'Adulto' | 'Niño';
   date: string;
   status: 'checkin' | 'espera' | 'atendiendo' | 'atendiendo_nutri' | 'atendiendo_especialista' | 'atendido';
-  serviceType?: 'pediatría' | 'clínico' | 'ecografía' | 'psiquiatra' | 'odontología' | 'nutricionista';
+  serviceType?: 'pediatría' | 'clínico' | 'ecografía' | 'psiquiatría' | 'odontología' | 'nutrición';
   vitals: Vitals;
   evolution?: MedicalEvolution;
   orderIds?: string[]; // IDs de pedidos vinculados
   attendingDoctorId?: string;
   attendingDoctorName?: string;
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 export interface UploadRecord {
@@ -84,6 +89,7 @@ export interface OrderItem {
   drugId: string;
   drugName: string;
   quantity: string;
+  location?: string;
 }
 
 export interface Order {

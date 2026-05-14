@@ -68,8 +68,12 @@
         "uid": { "type": "string" },
         "role": { "type": "string", "enum": ["doctor", "pharmacy", "admission", "nurse", "nutritionist", "ecografista", "psiquiatra", "odontologo", "admin"] },
         "name": { "type": "string" },
+        "lastName": { "type": "string" },
+        "photoURL": { "type": "string" },
         "email": { "type": "string" },
-        "isPending": { "type": "boolean" }
+        "phone": { "type": "string" },
+        "isPending": { "type": "boolean" },
+        "profileCompleted": { "type": "boolean" }
       },
       "required": ["uid", "role", "name", "email"]
     },

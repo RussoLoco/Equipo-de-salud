@@ -1,22 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatch, limit, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { PatientVisit, MedicalEvolution, UserRole } from '../types';
+import { PatientVisit, MedicalEvolution, UserRole, OrderItem, Order } from '../types';
 import { useAuth } from './AuthProvider';
-import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, History, X, ChevronDown, ChevronUp, Calendar, FileText } from 'lucide-react';
+import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, History, X, ChevronDown, ChevronUp, Calendar, FileText, ShoppingCart, Package, Plus } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import Inventory from './Inventory';
 
 const ROLE_TO_SERVICE: Record<string, string> = {
   'ecografista': 'ecografía',
-  'psiquiatra': 'psiquiatra',
+  'psiquiatra': 'psiquiatría',
   'odontologo': 'odontología'
 };
 
 const SERVICE_LABEL: Record<string, string> = {
   'ecografía': 'Ecografía',
-  'psiquiatra': 'Psiquiatría',
+  'psiquiatría': 'Psiquiatría',
   'odontología': 'Odontología'
 };
 
@@ -43,8 +44,24 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
   // Evolutionary History State
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
 
+  // Scripting (RECETA) State
+  const [showInventory, setShowInventory] = useState(false);
+  const [cart, setCart] = useState<OrderItem[]>([]);
+
   const userRole = forcedRole || profile?.role || '';
   const myService = ROLE_TO_SERVICE[userRole];
+
+  const getServiceLabel = (type?: string) => {
+    switch (type) {
+      case 'nutrición': return 'Nutrición';
+      case 'odontología': return 'Odontología';
+      case 'psiquiatría': return 'Psiquiatría';
+      case 'ecografía': return 'Ecografía';
+      case 'pediatría': return 'Pediatría';
+      case 'clínico': return 'Clínico';
+      default: return type || 'Consulta';
+    }
+  };
 
   useEffect(() => {
     if (!myService) {
@@ -58,14 +75,12 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
     const q = query(
       collection(db, 'visits'), 
-      where('serviceType', '==', myService),
-      where('status', 'in', ['espera', 'atendiendo_especialista']),
-      where('date', '>=', timeLimit),
-      limit(100)
+      where('status', 'in', ['espera', 'atendiendo_especialista'])
     );
     
     const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => d.data() as PatientVisit);
+      const docs = snap.docs.map(d => d.data() as PatientVisit)
+        .filter(v => v.serviceType === myService && v.date >= timeLimit);
       // Sort by date (timestamp) as requested
       const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setPendingVisits(sorted);
@@ -92,7 +107,8 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       const visitUpdate = {
         status: 'atendiendo_especialista',
         attendingDoctorId: profile.uid,
-        attendingDoctorName: profile.name
+        attendingDoctorName: profile.name,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -102,7 +118,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       await batch.commit();
       setSelectedVisit({ ...visit, ...visitUpdate } as PatientVisit);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `patients/${visit.patientId}/visits/${visit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -119,7 +135,8 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       const visitUpdate = {
         status: 'espera',
         attendingDoctorId: null,
-        attendingDoctorName: null
+        attendingDoctorName: null,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -131,7 +148,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       setFindings('');
       setEvolutionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `release/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -185,20 +202,42 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
     setIsSubmitting(true);
     try {
-      const evolution: MedicalEvolution = {
+      const evolution: MedicalEvolution & { serviceType?: string } = {
         date: new Date().toISOString(),
         antecedents: findings, // Hallazgos / Informe
         notes: evolutionNotes,
         doctorName: profile.name,
-        doctorId: profile.uid
+        doctorId: profile.uid,
+        serviceType: myService || 'especialidad'
       };
 
       const visitUpdate = {
         status: 'atendido',
-        evolution
+        evolution,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
+
+      // Create Order if cart has items
+      let orderId: string | null = null;
+      if (cart.length > 0) {
+        orderId = doc(collection(db, 'orders')).id;
+        const orderData: Order = {
+          orderId,
+          date: new Date().toISOString(),
+          doctorId: profile.uid,
+          doctorName: profile.name,
+          patientId: selectedVisit.patientId,
+          patientName: selectedVisit.patientName,
+          patientDni: selectedVisit.patientDni,
+          items: cart,
+          status: 'Pendiente',
+          location: 'Consultorio'
+        };
+        batch.set(doc(db, 'orders', orderId), orderData);
+      }
+
       batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
       batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
 
@@ -207,11 +246,25 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       setSelectedVisit(null);
       setFindings('');
       setEvolutionNotes('');
+      setCart([]);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const removeFromCart = (drugId: string) => {
+    setCart(cart.filter(item => item.drugId !== drugId));
+  };
+
+  const updateCartQuantity = (drugId: string, value: string) => {
+    setCart(cart.map(item => {
+      if (item.drugId === drugId) {
+        return { ...item, quantity: value };
+      }
+      return item;
+    }));
   };
 
   const adultVisits = pendingVisits.filter(v => v.category === 'Adulto');
@@ -381,8 +434,8 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-400">
-          <div className="flex flex-col lg:flex-row gap-8">
-            <div className="flex-1 space-y-8">
+          <div className="flex flex-col xl:flex-row gap-8">
+            <div className="flex-1 space-y-8 min-w-0">
               {/* Header */}
               <div className="bg-slate-900 text-white p-10 rounded-[3rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8">
                 <div className="flex items-center gap-6">
@@ -493,19 +546,95 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                   </div>
                 </div>
 
-                <button 
-                  onClick={handleCompleteConsultation}
-                  disabled={isSubmitting || !evolutionNotes}
-                  className="w-full py-6 bg-blue-600 text-white rounded-[2.5rem] font-black uppercase tracking-widest text-[12px] hover:bg-blue-700 transition-all shadow-2xl shadow-blue-100 disabled:opacity-50 flex items-center justify-center gap-3"
-                >
-                  {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <ScrollText className="h-5 w-5" />}
-                  {isSubmitting ? 'GUARDANDO...' : 'FINALIZAR CONSULTA / INFORME'}
-                </button>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  {['psiquiatría', 'odontología', 'pediatría', 'clínico'].includes(myService) && (
+                    <button 
+                      onClick={() => setShowInventory(true)}
+                      className="flex-1 py-5 bg-white border border-slate-200 text-slate-600 rounded-3xl font-black uppercase tracking-widest text-[11px] hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center gap-3 group shadow-sm active:scale-[0.98]"
+                    >
+                      <Plus className="h-4 w-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
+                      Medicamentos
+                    </button>
+                  )}
+                  <button 
+                    onClick={handleCompleteConsultation}
+                    disabled={isSubmitting || !evolutionNotes}
+                    className="flex-[2] py-5 bg-blue-600 text-white rounded-[2.5rem] font-black uppercase tracking-widest text-[12px] hover:bg-blue-700 transition-all shadow-2xl shadow-blue-100 disabled:opacity-50 flex items-center justify-center gap-3 active:scale-[0.98]"
+                  >
+                    {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <ScrollText className="h-5 w-5" />}
+                    {isSubmitting ? 'GUARDANDO...' : 'FINALIZAR CONSULTA / INFORME'}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Sidebar History */}
-            <div className="w-full lg:w-96 shrink-0">
+            {/* Side Column: Cart/Summary */}
+            <div className="w-full xl:w-96 shrink-0 space-y-6">
+              {['psiquiatría', 'odontología', 'pediatría', 'clínico'].includes(myService) && (
+                <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 space-y-8 sticky top-8 z-10">
+                  <div>
+                    <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.25em] mb-4">Medicación Recetada</h4>
+                    <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
+                      {cart.map(item => (
+                        <div key={item.drugId} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
+                              <Package className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-bold text-slate-700 line-clamp-1">{item.drugName}</p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.quantity} Uni.</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button 
+                              onClick={() => {
+                                const qtyNum = parseInt(String(item.quantity).replace(/[^0-9]/g, '')) || 0;
+                                if (qtyNum <= 1) {
+                                  removeFromCart(item.drugId);
+                                } else {
+                                  updateCartQuantity(item.drugId, String(qtyNum - 1));
+                                }
+                              }} 
+                              className="p-1 hover:bg-white rounded-lg text-slate-400 hover:text-red-500 transition-colors"
+                              title="Reducir cantidad"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                            <input 
+                              type="text"
+                              value={item.quantity}
+                              onChange={(e) => updateCartQuantity(item.drugId, e.target.value)}
+                              className="w-16 bg-white border border-slate-200 rounded-lg text-[9px] font-black text-center text-slate-700 py-1 focus:ring-2 focus:ring-blue-100"
+                            />
+                            <button 
+                              onClick={() => {
+                                const qtyNum = parseInt(String(item.quantity).replace(/[^0-9]/g, '')) || 0;
+                                updateCartQuantity(item.drugId, String(qtyNum + 1));
+                              }} 
+                              className="p-1 hover:bg-white rounded-lg text-slate-400 hover:text-blue-600 transition-colors"
+                            >
+                              <Plus className="h-3 w-3" />
+                            </button>
+                            <button onClick={() => removeFromCart(item.drugId)} className="p-1 hover:bg-red-50 rounded-lg text-slate-300 hover:text-red-500 transition-colors ml-1">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {cart.length === 0 && (
+                        <div className="py-8 text-center border-2 border-dashed border-slate-100 rounded-3xl">
+                          <ShoppingCart className="h-6 w-6 text-slate-100 mx-auto mb-2" />
+                          <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">Sin medicamentos</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
                <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 space-y-6 sticky top-8">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <History className="h-3.5 w-3.5" />
@@ -515,9 +644,14 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                     {patientHistory.map(visit => (
                       <div key={visit.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">
-                            {format(new Date(visit.date), 'dd/MM/yyyy')}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">
+                              {format(new Date(visit.date), 'dd/MM/yyyy')}
+                            </span>
+                            <span className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-[7px] font-black uppercase tracking-widest rounded border border-blue-100">
+                              {getServiceLabel(visit.serviceType)}
+                            </span>
+                          </div>
                           <span className="text-[8px] font-bold text-slate-400 italic">
                             {visit.evolution?.doctorName.split(' ')[0]}
                           </span>
@@ -529,6 +663,40 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                     ))}
                   </div>
                </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Inventory Selector for Prescriptions */}
+      {showInventory && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 lg:p-12 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-7xl h-[calc(100vh-2rem)] lg:h-[90vh] rounded-[2rem] lg:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+            <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-100">
+                  <Plus className="h-6 w-6" />
+                </div>
+                <div>
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight">Agregar Medicación</h3>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Consulta stock en tiempo real</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setShowInventory(false)}
+                className="w-12 h-12 flex items-center justify-center bg-white hover:bg-red-50 hover:text-red-500 rounded-2xl transition-all shadow-sm border border-slate-100"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="flex-1 min-h-0 bg-slate-50/30 p-4 lg:p-8 flex flex-col">
+               <Inventory 
+                  externalCart={cart} 
+                  setExternalCart={setCart} 
+                  isSelectionMode={true} 
+                  onConfirm={() => setShowInventory(false)}
+               />
             </div>
           </div>
         </div>
@@ -556,7 +724,12 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                 {peekingHistory.map(visit => (
                   <div key={visit.id} className="mb-6 bg-white border border-slate-100 p-8 rounded-3xl">
                      <div className="flex justify-between mb-4">
-                        <span className="text-xs font-black text-slate-800 uppercase tracking-widest">{format(new Date(visit.date), 'dd MMMM yyyy', { locale: es })}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-slate-800 uppercase tracking-widest">{format(new Date(visit.date), 'dd MMMM yyyy', { locale: es })}</span>
+                          <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded-md border border-blue-100">
+                            {getServiceLabel(visit.serviceType)}
+                          </span>
+                        </div>
                         <span className="text-[10px] font-bold text-slate-400">Evaluado por: {visit.evolution?.doctorName}</span>
                      </div>
                      <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap">{visit.evolution?.notes}</p>

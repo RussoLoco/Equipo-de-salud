@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatc
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { PatientVisit, MedicalEvolution, Medicine, OrderItem, Order } from '../types';
 import { useAuth } from './AuthProvider';
-import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, Search, X, ShoppingCart, Plus, Trash2, Package, History, AlertCircle, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
+import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, Search, X, ShoppingCart, Plus, Trash2, Package, History, AlertCircle, ChevronDown, ChevronUp, Calendar, MapPin } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -17,6 +17,7 @@ export default function MedicalConsultation() {
   const [peekingHistory, setPeekingHistory] = useState<PatientVisit[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittingService, setSubmittingService] = useState<string | null>(null);
 
   // Consultation State
   const [antecedents, setAntecedents] = useState('');
@@ -35,6 +36,18 @@ export default function MedicalConsultation() {
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [showReferralModal, setShowReferralModal] = useState(false);
 
+  const getServiceLabel = (type?: string) => {
+    switch (type) {
+      case 'nutrición': return 'Nutrición';
+      case 'odontología': return 'Odontología';
+      case 'psiquiatría': return 'Psiquiatría';
+      case 'ecografía': return 'Ecografía';
+      case 'pediatría': return 'Pediatría';
+      case 'clínico': return 'Clínico';
+      default: return type || 'Consulta';
+    }
+  };
+
   useEffect(() => {
     // Inicio del día actual (00:00) para reiniciar turnos diariamente
     const today = new Date();
@@ -43,13 +56,18 @@ export default function MedicalConsultation() {
 
     const q = query(
       collection(db, 'visits'), 
-      where('status', 'in', ['espera', 'atendiendo', 'atendiendo_nutri']),
-      where('date', '>=', timeLimit),
-      limit(100)
+      where('status', 'in', ['espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'])
     );
     
     const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => d.data() as PatientVisit);
+      const allowedRoles = profile?.role === 'nutritionist' ? ['nutrición'] :
+                           profile?.role === 'ecografista' ? ['ecografía'] :
+                           profile?.role === 'psiquiatra' ? ['psiquiatría'] :
+                           profile?.role === 'odontologo' ? ['odontología'] :
+                           ['clínico', 'pediatría'];
+
+      const docs = snap.docs.map(d => d.data() as PatientVisit)
+        .filter(v => v.date >= timeLimit && (v.serviceType ? allowedRoles.includes(v.serviceType) : true));
       // Ordenamos por fecha de llegada
       const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setPendingVisits(sorted);
@@ -78,7 +96,8 @@ export default function MedicalConsultation() {
       const visitUpdate = {
         status: 'atendiendo',
         attendingDoctorId: profile.uid,
-        attendingDoctorName: profile.name
+        attendingDoctorName: profile.name,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -88,7 +107,7 @@ export default function MedicalConsultation() {
       await batch.commit();
       setSelectedVisit({ ...visit, ...visitUpdate });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `patients/${visit.patientId}/visits/${visit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -111,7 +130,8 @@ export default function MedicalConsultation() {
       const visitUpdate = {
         status: 'espera',
         attendingDoctorId: null,
-        attendingDoctorName: null
+        attendingDoctorName: null,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -123,7 +143,7 @@ export default function MedicalConsultation() {
       setAntecedents('');
       setEvolutionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `release/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -189,55 +209,34 @@ export default function MedicalConsultation() {
   };
 
   const handleReferPatient = async (service: PatientVisit['serviceType']) => {
-    if (!selectedVisit || !profile) return;
-    setIsSubmitting(true);
-    try {
-      const visitUpdate = {
-        status: 'espera',
-        serviceType: service,
-        date: new Date().toISOString(),
-        attendingDoctorId: null,
-        attendingDoctorName: null
-      };
-
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
-      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
-      
-      await batch.commit();
-      
-      alert(`Paciente derivado a ${service} correctamente.`);
-      setSelectedVisit(null);
-      setAntecedents('');
-      setEvolutionNotes('');
-      setShowReferralModal(false);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits_referral');
-    } finally {
-      setIsSubmitting(false);
-    }
+    setSubmittingService(service);
+    // We now use handleCompleteConsultation(service) to ensure notes and orders are saved
+    await handleCompleteConsultation(service);
   };
 
-  const handleCompleteConsultation = async () => {
+  const handleCompleteConsultation = async (referralService?: PatientVisit['serviceType']) => {
     if (!selectedVisit || !profile) return;
-    if (!evolutionNotes) {
-      alert('Debes ingresar la nota de evolución médica.');
+    if (!evolutionNotes && !referralService) {
+      alert('Debes ingresar la nota de evolución médica antes de finalizar.');
       return;
     }
 
     setIsSubmitting(true);
+    if (!referralService) setSubmittingService(null);
     try {
-      const evolution: MedicalEvolution = {
+      const evolution: MedicalEvolution & { serviceType?: string } = {
         date: new Date().toISOString(),
         antecedents,
-        notes: evolutionNotes,
+        notes: evolutionNotes || 'Derivación sin notas adicionales.',
         doctorName: profile.name,
-        doctorId: profile.uid
+        doctorId: profile.uid,
+        serviceType: selectedVisit.serviceType || 'clínico'
       };
 
       const visitUpdate = {
         status: 'atendido',
-        evolution
+        evolution,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -261,28 +260,55 @@ export default function MedicalConsultation() {
         batch.set(doc(db, 'orders', orderId), orderData);
       }
 
-      // Update visit in both locations
+      // Update current visit in both locations
       const mainVisitRef = doc(db, 'visits', selectedVisit.id);
       const patientVisitRef = doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id);
       
       batch.update(mainVisitRef, visitUpdate);
       batch.update(patientVisitRef, visitUpdate);
 
-      if (orderId) {
-        // Link order to visit if needed (optional but good practice)
-        // visitUpdate.orderIds = [orderId]; // If we want to store it
+      // If it's a referral, create a NEW visit for the next service
+      if (referralService) {
+        const newVisitId = doc(collection(db, 'visits')).id;
+        const newVisitData: PatientVisit = {
+          id: newVisitId,
+          patientId: selectedVisit.patientId,
+          patientName: selectedVisit.patientName,
+          patientDni: selectedVisit.patientDni,
+          age: selectedVisit.age,
+          location: selectedVisit.location,
+          category: selectedVisit.category,
+          date: new Date().toISOString(),
+          status: 'espera',
+          serviceType: referralService,
+          vitals: selectedVisit.vitals, // Copy vitals to the new visit
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+
+        batch.set(doc(db, 'visits', newVisitId), newVisitData);
+        batch.set(doc(db, `patients/${selectedVisit.patientId}/visits`, newVisitId), newVisitData);
       }
 
       await batch.commit();
       
+      if (referralService) {
+        alert(`Consulta guardada y paciente derivado a ${getServiceLabel(referralService)} correctamente.`);
+      } else {
+        alert('Consulta finalizada y guardada correctamente.');
+      }
+
       setSelectedVisit(null);
       setAntecedents('');
       setEvolutionNotes('');
       setCart([]);
+      setShowReferralModal(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      alert(`Error al procesar la consulta: ${err instanceof Error ? err.message : String(err)}`);
+      handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
+      setSubmittingService(null);
     }
   };
 
@@ -477,9 +503,9 @@ export default function MedicalConsultation() {
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-400">
-          <div className="flex flex-col lg:flex-row gap-8">
+          <div className="flex flex-col xl:flex-row gap-8">
             {/* Consultation Form */}
-            <div className="flex-1 space-y-8">
+            <div className="flex-1 space-y-8 min-w-0">
               {/* Header Card */}
               <div className="bg-slate-900 text-white p-10 rounded-[3rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8">
                 <div className="flex items-center gap-6">
@@ -630,9 +656,14 @@ export default function MedicalConsultation() {
                               <Calendar className="h-5 w-5" />
                             </div>
                             <div>
-                              <p className="text-xs font-black text-slate-800">
-                                {format(new Date(visit.date), 'EEEE d MMMM, yyyy', { locale: es })}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="text-xs font-black text-slate-800">
+                                  {format(new Date(visit.date), 'EEEE d MMMM, yyyy', { locale: es })}
+                                </p>
+                                <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded-md border border-blue-100">
+                                  {getServiceLabel(visit.serviceType)}
+                                </span>
+                              </div>
                               <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                                 Dr/a. {visit.evolution?.doctorName || 'Sin dato'}
                               </p>
@@ -728,26 +759,26 @@ export default function MedicalConsultation() {
                 <div className="flex flex-col sm:flex-row gap-4">
                   <button 
                     onClick={() => setShowInventory(true)}
-                    className="flex-1 py-5 bg-white border-2 border-slate-200 text-slate-600 rounded-[2rem] font-black uppercase tracking-widest text-[11px] hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center gap-3 group"
+                    className="flex-1 py-5 bg-white border border-slate-200 text-slate-600 rounded-3xl font-black uppercase tracking-widest text-[11px] hover:border-blue-600 hover:text-blue-600 transition-all flex items-center justify-center gap-3 group shadow-sm active:scale-[0.98]"
                   >
-                    <Plus className="h-4 w-4 bg-slate-100 p-0.5 rounded group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors" />
-                    Agregar Medicación (Farmacia)
+                    <Plus className="h-4 w-4 text-slate-300 group-hover:text-blue-600 transition-colors" />
+                    Medicamentos
                   </button>
                   <button 
                     onClick={() => setShowReferralModal(true)}
-                    className="flex-1 py-5 bg-blue-50 border-2 border-blue-100 text-blue-600 rounded-[2rem] font-black uppercase tracking-widest text-[11px] hover:bg-blue-100 transition-all flex items-center justify-center gap-3 group"
+                    className="flex-1 py-5 bg-blue-50/50 border border-blue-100 text-blue-600 rounded-3xl font-black uppercase tracking-widest text-[11px] hover:bg-blue-100 transition-all flex items-center justify-center gap-3 group shadow-sm shadow-blue-50 active:scale-[0.98]"
                   >
-                    <ArrowRight className="h-4 w-4 bg-white p-0.5 rounded group-hover:translate-x-1 transition-transform" />
-                    Interconsulta / Derivar
+                    <ArrowRight className="h-4 w-4 text-blue-400 group-hover:translate-x-1 transition-transform" />
+                    Interconsulta
                   </button>
                   <button 
-                    onClick={handleCompleteConsultation}
+                    onClick={() => handleCompleteConsultation()}
                     disabled={isSubmitting}
                     className={cn(
-                      "flex-[2] py-5 rounded-[2rem] font-black uppercase tracking-widest text-[11px] transition-all shadow-2xl disabled:opacity-50 flex items-center justify-center gap-3",
+                      "flex-[2] py-5 rounded-3xl font-black uppercase tracking-widest text-[11px] transition-all shadow-2xl disabled:opacity-50 flex items-center justify-center gap-3 active:scale-[0.98]",
                       !evolutionNotes 
-                        ? "bg-slate-200 text-slate-400 cursor-not-allowed shadow-none" 
-                        : "bg-slate-900 text-white hover:bg-emerald-600 shadow-slate-200 ripple"
+                        ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none border border-slate-200" 
+                        : "bg-slate-900 text-white hover:bg-emerald-600 shadow-slate-200"
                     )}
                   >
                     {isSubmitting ? (
@@ -755,20 +786,20 @@ export default function MedicalConsultation() {
                     ) : !evolutionNotes ? (
                       <AlertCircle className="h-4 w-4" />
                     ) : (
-                      <ScrollText className="h-4 w-4" />
+                      <Check className="h-4 w-4" />
                     )}
-                    {!evolutionNotes ? 'Faltan campos obligatorios' : 'TERMINAR Y GUARDAR CONSULTA'}
+                    {!evolutionNotes ? 'Falta nota de evolución' : 'Finalizar Atenciones'}
                   </button>
                 </div>
               </div>
             </div>
 
             {/* Side Column: Cart/Summary */}
-            <div className="w-full lg:w-96 shrink-0 space-y-6">
+            <div className="w-full xl:w-96 shrink-0 space-y-6">
               <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 space-y-8 sticky top-8">
                 <div>
                   <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.25em] mb-4">Medicación Recetada</h4>
-                  <div className="space-y-3">
+                  <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
                     {cart.map(item => (
                       <div key={item.drugId} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
                         <div className="flex items-center gap-3">
@@ -777,7 +808,14 @@ export default function MedicalConsultation() {
                           </div>
                           <div>
                             <p className="text-[10px] font-bold text-slate-700 line-clamp-1">{item.drugName}</p>
-                            <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.quantity} Uni.</p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.quantity} Uni.</p>
+                              {item.location && (
+                                <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest bg-blue-50 px-1 rounded flex items-center gap-0.5">
+                                  <MapPin className="h-2 w-2" /> {item.location}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
@@ -842,7 +880,7 @@ export default function MedicalConsultation() {
       {/* Referral Modal */}
       {showReferralModal && (
         <div className="fixed inset-0 z-[500] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-hidden p-10 animate-in zoom-in-95 duration-300">
+          <div className="bg-white w-full max-w-md rounded-[3rem] shadow-2xl overflow-y-auto max-h-[90vh] p-10 animate-in zoom-in-95 duration-300">
             <div className="flex items-center gap-4 mb-8">
                <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-100">
                  <ArrowRight className="h-6 w-6" />
@@ -856,21 +894,38 @@ export default function MedicalConsultation() {
             <div className="space-y-3">
                {[
                  { id: 'ecografía', label: 'Ecografía' },
-                 { id: 'psiquiatra', label: 'Psiquiatría' },
+                 { id: 'psiquiatría', label: 'Psiquiatría' },
                  { id: 'odontología', label: 'Odontología' },
-                 { id: 'nutricionista', label: 'Nutrición' },
+                 { id: 'nutrición', label: 'Nutrición' },
                  { id: 'clínico', label: 'Clínica Médica' },
                  { id: 'pediatría', label: 'Pediatría' }
-               ].map(service => (
+               ].filter(service => {
+                 if (selectedVisit.category === 'Adulto' && service.id === 'pediatría') return false;
+                 if (selectedVisit.category === 'Niño' && service.id === 'clínico') return false;
+                 return true;
+               }).map(service => (
                  <button 
                    key={service.id}
                    type="button"
                    disabled={isSubmitting}
                    onClick={() => handleReferPatient(service.id as any)}
-                   className="w-full p-4 text-left bg-slate-50 hover:bg-blue-50 border border-slate-100 hover:border-blue-200 rounded-2xl flex items-center justify-between group transition-all"
+                   className={cn(
+                     "w-full p-5 text-left bg-white hover:bg-blue-50 border-2 rounded-2xl flex items-center justify-between group transition-all duration-300 transform hover:-translate-y-1 hover:shadow-lg active:scale-95 active:shadow-none",
+                     submittingService === service.id ? "border-blue-400 bg-blue-50 cursor-wait" : "border-slate-100 hover:border-blue-300",
+                     isSubmitting && submittingService !== service.id && "opacity-50 cursor-not-allowed hover:-translate-y-0 hover:shadow-none bg-slate-50 border-slate-100"
+                   )}
                  >
-                   <span className="text-sm font-bold text-slate-700 group-hover:text-blue-600 uppercase tracking-tight">{service.label}</span>
-                   <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all" />
+                   <span className={cn(
+                     "text-[13px] font-black uppercase tracking-widest transition-colors",
+                     submittingService === service.id ? "text-blue-600" : "text-slate-600 group-hover:text-blue-600"
+                   )}>
+                     {service.label}
+                   </span>
+                   {submittingService === service.id ? (
+                     <Loader2 className="h-5 w-5 text-blue-600 animate-spin" />
+                   ) : (
+                     <ArrowRight className="h-5 w-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-2 transition-all duration-300" />
+                   )}
                  </button>
                ))}
             </div>
@@ -889,7 +944,7 @@ export default function MedicalConsultation() {
       {/* Inventory Selector for Prescriptions */}
       {showInventory && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 lg:p-12 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
-          <div className="bg-white w-full max-w-7xl h-full lg:h-[90vh] rounded-[3rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
+          <div className="bg-white w-full max-w-7xl h-[calc(100vh-2rem)] lg:h-[90vh] rounded-[2rem] lg:rounded-[3rem] shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 duration-300">
             <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white shadow-xl shadow-blue-100">
@@ -908,7 +963,7 @@ export default function MedicalConsultation() {
               </button>
             </div>
             
-            <div className="flex-1 overflow-hidden bg-slate-50/30 p-4 lg:p-8">
+            <div className="flex-1 min-h-0 bg-slate-50/30 p-4 lg:p-8 flex flex-col">
                <Inventory 
                   externalCart={cart} 
                   setExternalCart={setCart} 
@@ -960,9 +1015,14 @@ export default function MedicalConsultation() {
                              <Calendar className="h-5 w-5" />
                           </div>
                           <div>
-                            <p className="text-sm font-black text-slate-800">
-                              {format(new Date(visit.date), 'EEEE d MMMM, yyyy', { locale: es })}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <p className="text-sm font-black text-slate-800">
+                                {format(new Date(visit.date), 'EEEE d MMMM, yyyy', { locale: es })}
+                              </p>
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-600 text-[8px] font-black uppercase tracking-widest rounded-md border border-blue-100">
+                                {getServiceLabel(visit.serviceType)}
+                              </span>
+                            </div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                               Dr/a. {visit.evolution?.doctorName}
                             </p>

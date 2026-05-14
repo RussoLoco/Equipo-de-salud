@@ -23,12 +23,15 @@ import {
   Users,
   ClipboardList,
   History,
-  Activity
+  Activity,
+  MessageCircle,
+  X
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
 function AppContent() {
-  const { profile, activeRole, isSuperAdmin, toggleAdminView, signOut } = useAuth();
+  const { profile, activeRole, isSuperAdmin, toggleAdminView, signOut, openProfileEdit } = useAuth();
   
   // Navigation Configuration - Icons and Labels
   const NAV_ITEMS = [
@@ -65,6 +68,7 @@ function AppContent() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isOperationalOpen, setIsOperationalOpen] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   if (!profile) return null;
 
@@ -121,20 +125,32 @@ function AppContent() {
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <div className="flex flex-col items-end hidden xs:flex">
+             <p className="text-[10px] font-black text-slate-800 tracking-[0.1em] uppercase leading-none mb-1">Unidad de Salud</p>
+             <div className="flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(16,185,129,0.8)]" />
+                <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none">Servidor Activo</span>
+             </div>
+          </div>
+
           <div className="relative">
             <button 
               onClick={() => setShowProfileMenu(!showProfileMenu)}
               className={cn(
-                "flex items-center gap-3 p-1 pr-4 rounded-full border transition-all",
-                showProfileMenu ? "border-blue-200 bg-blue-50 ring-4 ring-blue-50" : "border-slate-200 bg-white hover:bg-slate-50"
+                "flex items-center gap-3 p-1.5 pr-4 rounded-2xl border transition-all shadow-sm active:scale-95",
+                showProfileMenu ? "border-blue-200 bg-blue-50 ring-4 ring-blue-50" : "border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300"
               )}
             >
               <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200 overflow-hidden">
-                <User className="h-4 w-4" />
+                {profile.photoURL ? (
+                  <img src={profile.photoURL} alt="Profile" className="w-full h-full object-cover" />
+                ) : (
+                  <User className="h-4 w-4" />
+                )}
               </div>
               <div className="text-left hidden sm:block">
-                <p className="text-[10px] font-black text-slate-700 leading-tight uppercase">{profile.name}</p>
+                <p className="text-[10px] font-black text-slate-700 leading-tight uppercase">{profile.name} {profile.lastName}</p>
                 <p className="text-[9px] font-bold text-blue-500 uppercase tracking-tighter">{activeRole}</p>
               </div>
               <ChevronDown className={cn("h-3 w-3 text-slate-400 transition-transform", showProfileMenu && "rotate-180")} />
@@ -146,7 +162,7 @@ function AppContent() {
                 <div className="absolute right-0 mt-3 w-72 bg-white rounded-3xl shadow-2xl border border-slate-200 p-3 z-20 animate-in fade-in zoom-in-95 duration-200">
                   <div className="px-4 py-4 mb-3 bg-slate-50 rounded-2xl border border-slate-100">
                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Perfil de Usuario</p>
-                    <p className="text-xs font-bold text-slate-800 truncate">{profile.name}</p>
+                    <p className="text-xs font-bold text-slate-800 truncate">{profile.name} {profile.lastName}</p>
                     <p className="text-xs text-slate-500">{profile.email}</p>
                     <p className="text-[10px] font-bold text-slate-400 mt-1 uppercase">{profile.phone || 'Sin teléfono'}</p>
                   </div>
@@ -261,6 +277,14 @@ function AppContent() {
                       Panel Administrativo
                     </button>
                   )}
+
+                  <button 
+                    onClick={() => { openProfileEdit(); setShowProfileMenu(false); }}
+                    className="flex w-full items-center gap-3 px-4 py-3 rounded-2xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all uppercase tracking-widest mb-1"
+                  >
+                    <User className="h-4 w-4" />
+                    Editar Perfil
+                  </button>
 
                   <button
                     onClick={signOut}
@@ -410,12 +434,19 @@ function AppContent() {
                <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
                <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-3">Ayuda & Soporte</p>
                <p className="text-xs font-bold leading-relaxed">¿Necesitas asistencia técnica con la plataforma?</p>
-               <button className="mt-4 w-full py-2 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-colors">Contactar IT</button>
+               <button 
+                onClick={() => setShowSupportModal(true)}
+                className="mt-4 w-full py-2 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-colors"
+               >
+                Contactar IT
+               </button>
             </div>
             
-            <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-              Versión Stable 2.4.0
-            </p>
+            <div className="pt-4 border-t border-slate-50 opacity-40">
+              <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                Versión Estable 2.4.0
+              </p>
+            </div>
           </div>
         </aside>
 
@@ -461,24 +492,103 @@ function AppContent() {
           </div>
 
           {/* Bottom Status Bar */}
-          <footer className="h-10 bg-white border-t border-slate-200 flex items-center gap-8 px-8 shrink-0">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
-              <p className="text-[10px] text-slate-400 uppercase tracking-[0.2em] font-black">Equipo de Salud OS</p>
-            </div>
-            <div className="flex items-center gap-4 ml-auto">
-              <p className="text-[10px] text-slate-400 font-mono italic">
-                {activeRole?.toUpperCase()}_ENV_PRODUCTION
-              </p>
-              <div className="w-px h-3 bg-slate-200"></div>
-              <div className="flex items-center gap-1.5 text-blue-600 font-black text-[9px] uppercase tracking-widest">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                Sync Ok
+          <footer className="h-16 bg-white border-t border-slate-100 flex items-center justify-between px-10 shrink-0">
+            <div className="flex items-center gap-4">
+              <div className="relative flex items-center justify-center">
+                <div className="absolute w-3 h-3 bg-emerald-400 rounded-full blur-sm opacity-50 animate-pulse"></div>
+                <div className="relative w-2 h-2 bg-emerald-500 rounded-full border border-white shadow-sm"></div>
               </div>
+              <div className="flex flex-col">
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] leading-none mb-1.5">Engineering by</p>
+                <p className="text-[13px] font-black text-slate-900 tracking-tight leading-none uppercase italic">
+                  S&S <span className="text-blue-600 font-black">Developments</span>
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-10">
+              <p className="hidden md:block text-[9px] text-slate-400 font-black uppercase tracking-[0.3em] opacity-40">
+                © {new Date().getFullYear()} Fundación Valores • Gestión Integral de Salud
+              </p>
             </div>
           </footer>
         </main>
       </div>
+
+      <AnimatePresence>
+        {showSupportModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSupportModal(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-[3rem] p-10 shadow-2xl overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 p-6">
+                <button 
+                  onClick={() => setShowSupportModal(false)}
+                  className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-2xl transition-all"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-col items-center text-center space-y-8">
+                <div className="w-24 h-24 bg-blue-50 rounded-[2.5rem] flex items-center justify-center text-blue-600 shadow-inner">
+                  <MessageCircle className="h-10 w-10" />
+                </div>
+
+                <div className="space-y-4">
+                  <h3 className="text-2xl font-black text-slate-900 tracking-tight leading-tight">
+                    Disculpa los Inconvenientes,<br />
+                    Estamos para ayudarte
+                  </h3>
+                  <div className="h-1 w-12 bg-blue-600 mx-auto rounded-full" />
+                  <p className="text-slate-500 font-medium leading-relaxed italic text-sm px-4">
+                    "Podes contactarnos por el WhatsApp del Equipo de Salud"
+                  </p>
+                </div>
+
+                <div className="pt-6 border-t border-slate-100 w-full">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] mb-4">Mesa de Ayuda Directa</p>
+                  <div className="flex flex-col gap-1 items-center">
+                    <p className="text-sm font-black text-slate-800 tracking-tight">Atte David Soria</p>
+                    <p className="text-sm font-black text-slate-800 tracking-tight">& Agustin Soria</p>
+                  </div>
+                </div>
+
+                <div className="pt-8 w-full flex flex-col gap-3">
+                  <a 
+                    href="https://wa.me/5491112223334" // Placeholder for their WhatsApp
+                    target="_blank"
+                    className="w-full py-4 bg-emerald-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-600 transition-all shadow-xl shadow-emerald-100 flex items-center justify-center gap-2 group"
+                  >
+                    <MessageCircle className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                    Iniciar Chat WhatsApp
+                  </a>
+                  <button 
+                    onClick={() => setShowSupportModal(false)}
+                    className="w-full py-4 bg-slate-50 text-slate-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-100 transition-all"
+                  >
+                    Cerrar Ventana
+                  </button>
+                </div>
+              </div>
+
+              {/* Aesthetic background elements */}
+              <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-blue-50 rounded-full blur-3xl opacity-50" />
+              <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-50 rounded-full blur-3xl opacity-50" />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

@@ -19,7 +19,8 @@ import {
   Calendar,
   Layers,
   ArrowUpDown,
-  User
+  User,
+  MapPin
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -182,7 +183,8 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
       return [...current, {
         drugId: med.drugId,
         drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug,
-        quantity: '1'
+        quantity: '1',
+        location: med.location || '---'
       }];
     });
   };
@@ -491,6 +493,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                                   drugId: med.drugId, 
                                   drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug, 
                                   quantity: "1", 
+                                  location: med.location || '---',
                                   stockAtTime: med.stock 
                                 }]);
                               }
@@ -598,9 +601,14 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
           ))}
         </div>
         {filteredMedicines.length === 0 && (
-          <div className="p-20 text-center">
-            <Package className="h-12 w-12 text-slate-200 mx-auto mb-4" />
-            <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No se encontraron medicamentos</p>
+          <div className="flex flex-col items-center justify-center p-20 text-center animate-in fade-in zoom-in-95 duration-500">
+            <div className="w-20 h-20 bg-slate-50 rounded-[2rem] flex items-center justify-center text-slate-200 mb-6 shadow-inner">
+              <Package className="h-10 w-10" />
+            </div>
+            <h4 className="text-xl font-black text-slate-400 tracking-tight uppercase">Sin resultados</h4>
+            <p className="text-sm text-slate-300 font-bold uppercase tracking-widest mt-2 max-w-xs mx-auto leading-relaxed">
+              No encontramos medicamentos que coincidan con "{searchTerm}". Intentá con otros términos o filtros.
+            </p>
           </div>
         )}
       </div>
@@ -727,7 +735,14 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                     </div>
                     <div>
                       <p className="text-xs font-bold text-slate-800 line-clamp-1">{item.drugName}</p>
-                      <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">#{item.drugId}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-[9px] font-black text-slate-300 uppercase tracking-widest">#{item.drugId}</p>
+                        {item.location && (
+                          <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest bg-blue-50 px-1 rounded flex items-center gap-0.5">
+                            <MapPin className="h-2 w-2" /> {item.location}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
 

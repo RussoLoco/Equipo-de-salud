@@ -1,13 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut } from 'firebase/auth';
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, doc, getDocFromServer } from 'firebase/firestore';
+import { initializeFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
 
-// Optimization: Offline Persistence (New Cache API)
+// Use long-polling to avoid connection issues in restricted environments
 export const db = initializeFirestore(app, {
-  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+  experimentalForceLongPolling: true,
 }, firebaseConfig.firestoreDatabaseId);
 
 export const auth = getAuth(app);
@@ -17,7 +17,17 @@ export async function loginWithGoogle() {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
-  } catch (error) {
+  } catch (error: any) {
+    // These are common errors when the user cancels the login or the browser blocks the popup
+    if (
+      error.code === 'auth/popup-closed-by-user' ||
+      error.code === 'auth/cancelled-popup-request' ||
+      error.code === 'auth/popup-blocked'
+    ) {
+      console.warn("Login cancelled or blocked:", error.code);
+      return null;
+    }
+    
     console.error("Login Error:", error);
     throw error;
   }

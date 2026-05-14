@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, doc, writeBatch, getDocs, getDocsFromServer, query, where, orderBy, setDoc, deleteDoc, onSnapshot, limit, getCountFromServer } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Medicine, UploadRecord } from '../types';
-import { Database, Check, AlertCircle, FileText, ArrowRight, Users, Upload, Trash2, Loader2, RefreshCw, Layers, ShieldAlert } from 'lucide-react';
+import { Database, Check, AlertCircle, FileText, ArrowRight, Users, Upload, Trash2, Loader2, RefreshCw, Layers, ShieldAlert, ShoppingBag, Activity, User } from 'lucide-react';
 import UserManagement from './UserManagement';
 import { cn } from '../lib/utils';
 import Papa from 'papaparse';
@@ -625,113 +625,138 @@ export default function AdminPanel() {
       {adminTab === 'users' ? (
         <UserManagement />
       ) : adminTab === 'system' ? (
-        <div className="rounded-2xl border border-slate-200 bg-white p-10 shadow-sm space-y-8">
-          <div>
-            <h2 className="text-xl font-bold text-slate-800">Mantenimiento de Datos</h2>
-            <p className="text-xs text-slate-400 font-medium mt-1 uppercase tracking-widest">Acciones críticas de limpieza y restauración</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="p-6 rounded-2xl border border-red-100 bg-red-50/30 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-red-600">
-                  <Database className="h-5 w-5" />
-                  <h3 className="font-bold">Inventario de Medicinas</h3>
-                </div>
-                {totalInventario !== null && (
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest animate-in fade-in transition-all",
-                    totalInventario === 0 ? "bg-slate-100 text-slate-400" : "bg-red-500 text-white shadow-lg shadow-red-200"
-                  )}>
-                    {totalInventario} {totalInventario === 1 ? 'Producto' : 'Productos'} en Stock
-                  </span>
-                )}
+        <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <Database className="w-24 h-24" />
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Elimina todos los registros de la base de datos de inventario. Útil para reiniciar el sistema o cargar datos nuevos desde cero.
-              </p>
-              <div className="flex flex-wrap gap-3 pt-2">
-                <button
-                  onClick={handleWipeInventory}
-                  disabled={isWiping}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-red-600 border border-red-200 hover:bg-red-600 hover:text-white transition-all shadow-sm disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {isWiping ? 'Borrando...' : 'Vaciar Inventario'}
-                </button>
-                <button
-                  onClick={handleTotalWipe}
-                  disabled={isWiping || isWipingOrders}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-red-600 text-white border border-red-700 hover:bg-red-700 transition-all shadow-sm disabled:opacity-50"
-                >
-                  <ShieldAlert className="h-3.5 w-3.5" />
-                  Limpieza Total (DB)
-                </button>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Stock Total</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-900 leading-none">{totalInventario ?? '---'}</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">SKUs</span>
+              </div>
+              <div className="mt-6 flex items-center gap-2 text-[10px] font-black text-emerald-500 uppercase tracking-widest bg-emerald-50 w-fit px-3 py-1 rounded-lg">
+                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+                Sincronizado
+              </div>
+            </div>
+            
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <ShoppingBag className="w-24 h-24" />
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Movimientos</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-900 leading-none">{totalPedidos ?? '---'}</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Órdenes</span>
+              </div>
+              <div className="mt-6 flex items-center gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest bg-blue-50 w-fit px-3 py-1 rounded-lg">
+                <Activity className="w-3 h-3" />
+                Historial Activo
               </div>
             </div>
 
-            <div className="p-6 rounded-2xl border border-slate-100 bg-slate-50/50 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-slate-700">
-                  <FileText className="h-5 w-5" />
-                  <h3 className="font-bold">Historial de Operaciones</h3>
-                </div>
-                {totalPedidos !== null && (
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest",
-                    totalPedidos === 0 ? "bg-slate-100 text-slate-400" : "bg-blue-600 text-white shadow-lg shadow-blue-100"
-                  )}>
-                    {totalPedidos} {totalPedidos === 1 ? 'Orden' : 'Ordenes'}
-                  </span>
-                )}
+            <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-sm relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity">
+                <Users className="w-24 h-24" />
               </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Elimina permanentemente el historial de pedidos, entregas y consumos. Esto no afecta el stock actual.
-              </p>
-              <div className="pt-2">
-                <button
-                  onClick={handleWipeOrders}
-                  disabled={isWipingOrders}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-slate-700 border border-slate-200 hover:bg-slate-700 hover:text-white transition-all shadow-sm disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {isWipingOrders ? 'Limpiando...' : 'Borrar Historial'}
-                </button>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-4">Padron de Beneficiarios</p>
+              <div className="flex items-baseline gap-2">
+                <span className="text-4xl font-black text-slate-900 leading-none">{totalPacientes ?? '---'}</span>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Pacientes</span>
               </div>
-            </div>
-
-            <div className="p-6 rounded-2xl border border-blue-100 bg-blue-50/30 space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3 text-blue-700">
-                  <Users className="h-5 w-5" />
-                  <h3 className="font-bold">Base de Datos de Pacientes</h3>
-                </div>
-                {totalPacientes !== null && (
-                  <span className={cn(
-                    "text-[10px] font-black px-3 py-1 rounded-full uppercase tracking-widest",
-                    totalPacientes === 0 ? "bg-slate-100 text-slate-400" : "bg-blue-600 text-white shadow-lg shadow-blue-100"
-                  )}>
-                    {totalPacientes} {totalPacientes === 1 ? 'Paciente' : 'Pacientes'}
-                  </span>
-                )}
-              </div>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Elimina todos los registros de pacientes y sus datos históricos. Precaución: esta acción es irreversible.
-              </p>
-              <div className="pt-2">
-                <button
-                  onClick={handleWipePatients}
-                  disabled={loading}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest bg-white text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition-all shadow-sm disabled:opacity-50"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  Vaciar Pacientes
-                </button>
+              <div className="mt-6 flex items-center gap-2 text-[10px] font-black text-indigo-500 uppercase tracking-widest bg-indigo-50 w-fit px-3 py-1 rounded-lg">
+                <User className="w-3 h-3" />
+                Base Clínica
               </div>
             </div>
           </div>
 
-          {/* Toast Notification handled at top of div */}
+          <div className="rounded-[2.5rem] border border-slate-200 bg-white p-10 shadow-sm space-y-10 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-slate-50 rounded-full -translate-y-1/2 translate-x-1/2 p-10" />
+            
+            <div className="relative">
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">Acciones Críticas del Sistema</h2>
+              <p className="text-xs text-slate-400 font-bold mt-1 uppercase tracking-[0.2em]">ZONA DE MANTENIMIENTO Y SEGURIDAD</p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+              <div className="p-8 rounded-[2rem] border border-red-100 bg-red-50/20 space-y-6 hover:bg-red-50/40 transition-colors">
+                <div className="flex items-center gap-4 text-red-600">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-red-100/50">
+                    <Database className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Inventario Maestro</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  Elimina todos los registros de medicamentos. Esta acción es necesaria antes de realizar una recarga completa anual o semestral.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <button
+                    onClick={handleWipeInventory}
+                    disabled={isWiping}
+                    className="flex-1 min-w-[180px] flex items-center justify-center gap-3 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-white text-red-600 border border-red-200 hover:bg-red-600 hover:text-white transition-all shadow-xl shadow-red-100 disabled:opacity-50"
+                  >
+                    {isWiping ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Vaciar Inventario
+                  </button>
+                  <button
+                    onClick={handleTotalWipe}
+                    disabled={isWiping || isWipingOrders}
+                    className="flex-1 min-w-[180px] flex items-center justify-center gap-3 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-red-600 text-white border border-red-700 hover:bg-red-700 transition-all shadow-xl shadow-red-200 disabled:opacity-50"
+                  >
+                    <ShieldAlert className="h-4 w-4" />
+                    Reset Total DB
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-8 rounded-[2rem] border border-slate-200 bg-slate-50/30 space-y-6 hover:bg-slate-100/40 transition-colors">
+                <div className="flex items-center gap-4 text-slate-800">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-100">
+                    <FileText className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Historial Operativo</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                  Limpia el registro de auditoría y pedidos entregados. Utilícelo para archivar reportes y comenzar un nuevo período fiscal.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={handleWipeOrders}
+                    disabled={isWipingOrders}
+                    className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-white text-slate-700 border border-slate-200 hover:bg-slate-900 hover:text-white transition-all shadow-xl shadow-slate-200 disabled:opacity-50"
+                  >
+                    {isWipingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                    Depurar Historial
+                  </button>
+                </div>
+              </div>
+
+              <div className="p-8 rounded-[2rem] border border-blue-100 bg-blue-50/20 space-y-6 hover:bg-blue-50/40 transition-colors md:col-span-2">
+                <div className="flex items-center gap-4 text-blue-700">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-100">
+                    <Users className="h-6 w-6" />
+                  </div>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Gestión de Pacientes</h3>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed font-medium max-w-2xl">
+                  ADVERTENCIA: La eliminación de beneficiarios también eliminará sus antecedentes clínicos vinculados y visitas históricas. Asegúrese de realizar un backup antes de proceder.
+                </p>
+                <div className="pt-2">
+                  <button
+                    onClick={handleWipePatients}
+                    disabled={loading}
+                    className="flex items-center gap-3 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-white text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition-all shadow-xl shadow-blue-100 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Vaciar Padron de Pacientes
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       ) : (
         <div className="rounded-2xl border border-slate-200 bg-white p-10 shadow-sm">

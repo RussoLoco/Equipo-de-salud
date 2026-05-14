@@ -29,6 +29,18 @@ export default function NutritionistConsultation() {
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
   const [showFullHistory, setShowFullHistory] = useState(false);
 
+  const getServiceLabel = (type?: string) => {
+    switch (type) {
+      case 'nutrición': return 'Nutrición';
+      case 'odontología': return 'Odontología';
+      case 'psiquiatría': return 'Psiquiatría';
+      case 'ecografía': return 'Ecografía';
+      case 'pediatría': return 'Pediatría';
+      case 'clínico': return 'Clínico';
+      default: return type || 'Consulta';
+    }
+  };
+
   useEffect(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -36,13 +48,12 @@ export default function NutritionistConsultation() {
 
     const q = query(
       collection(db, 'visits'), 
-      where('status', 'in', ['espera', 'atendiendo_nutri']),
-      where('date', '>=', timeLimit),
-      limit(100)
+      where('status', 'in', ['espera', 'atendiendo_nutri'])
     );
     
     const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => d.data() as PatientVisit);
+      const docs = snap.docs.map(d => d.data() as PatientVisit)
+        .filter(v => v.date >= timeLimit && v.serviceType === 'nutrición');
       const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       setPendingVisits(sorted);
       setLoading(false);
@@ -74,7 +85,8 @@ export default function NutritionistConsultation() {
       const visitUpdate = {
         status: 'atendiendo_nutri',
         attendingDoctorId: profile.uid,
-        attendingDoctorName: profile.name
+        attendingDoctorName: profile.name,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -84,7 +96,7 @@ export default function NutritionistConsultation() {
       await batch.commit();
       setSelectedVisit({ ...visit, ...visitUpdate } as PatientVisit);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `claim/patients/${visit.patientId}/visits/${visit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -106,7 +118,8 @@ export default function NutritionistConsultation() {
       const visitUpdate = {
         status: 'espera',
         attendingDoctorId: null,
-        attendingDoctorName: null
+        attendingDoctorName: null,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -118,7 +131,7 @@ export default function NutritionistConsultation() {
       setRecommendations('');
       setNutritionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `release/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -190,17 +203,19 @@ export default function NutritionistConsultation() {
 
     setIsSubmitting(true);
     try {
-      const evolution: MedicalEvolution = {
+      const evolution: MedicalEvolution & { serviceType?: string } = {
         date: new Date().toISOString(),
         antecedents: recommendations, // Usamos antecedents para recomendaciones nutricionales
         notes: nutritionNotes,
         doctorName: profile.name,
-        doctorId: profile.uid
+        doctorId: profile.uid,
+        serviceType: 'nutrición'
       };
 
       const visitUpdate = {
         status: 'atendido', // Marcar como atendido finaliza el ciclo
-        evolution
+        evolution,
+        updatedAt: new Date().toISOString()
       };
 
       const batch = writeBatch(db);
@@ -213,7 +228,7 @@ export default function NutritionistConsultation() {
       setRecommendations('');
       setNutritionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits');
+      handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -377,8 +392,8 @@ export default function NutritionistConsultation() {
         </div>
       ) : (
         <div className="space-y-8 animate-in fade-in slide-in-from-bottom-6 duration-400">
-          <div className="flex flex-col lg:flex-row gap-8">
-            <div className="flex-1 space-y-8">
+          <div className="flex flex-col xl:flex-row gap-8">
+            <div className="flex-1 space-y-8 min-w-0">
               {/* Header Card */}
               <div className="bg-emerald-900 text-white p-10 rounded-[3rem] shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8">
                 <div className="flex items-center gap-6">
@@ -529,7 +544,7 @@ export default function NutritionistConsultation() {
             </div>
 
             {/* Sidebar for History */}
-            <div className="w-full lg:w-96 shrink-0">
+            <div className="w-full xl:w-96 shrink-0">
                <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 space-y-6 sticky top-8">
                   <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
                     <History className="h-3.5 w-3.5" />
@@ -539,9 +554,14 @@ export default function NutritionistConsultation() {
                     {patientHistory.map(visit => (
                       <div key={visit.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">
-                            {format(new Date(visit.date), 'dd/MM/yyyy')}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[9px] font-black text-slate-800 uppercase tracking-tighter">
+                              {format(new Date(visit.date), 'dd/MM/yyyy')}
+                            </span>
+                            <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 text-[7px] font-black uppercase tracking-widest rounded border border-emerald-100">
+                              {getServiceLabel(visit.serviceType)}
+                            </span>
+                          </div>
                           <span className="text-[8px] font-bold text-slate-400 italic">
                             Dr. {visit.evolution?.doctorName.split(' ')[0]}
                           </span>
@@ -583,7 +603,12 @@ export default function NutritionistConsultation() {
                 {peekingHistory.map(visit => (
                   <div key={visit.id} className="mb-6 bg-white border border-slate-100 p-8 rounded-3xl">
                      <div className="flex justify-between mb-4">
-                        <span className="text-xs font-black text-slate-800 uppercase tracking-widest">{format(new Date(visit.date), 'dd MMMM yyyy', { locale: es })}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black text-slate-800 uppercase tracking-widest">{format(new Date(visit.date), 'dd MMMM yyyy', { locale: es })}</span>
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-600 text-[8px] font-black uppercase tracking-widest rounded-md border border-emerald-100">
+                            {getServiceLabel(visit.serviceType)}
+                          </span>
+                        </div>
                         <span className="text-[10px] font-bold text-slate-400">Evaluado por: {visit.evolution?.doctorName}</span>
                      </div>
                      <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap">{visit.evolution?.notes}</p>

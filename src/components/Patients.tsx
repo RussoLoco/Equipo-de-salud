@@ -23,7 +23,7 @@ export default function Patients() {
     category: 'Adulto' as 'Adulto' | 'Niño',
     guardianName: '',
     guardianRelation: 'Madre' as 'Madre' | 'Padre' | 'Familiar',
-    serviceType: 'clínico' as 'pediatría' | 'clínico' | 'ecografía' | 'psiquiatra' | 'odontología' | 'nutricionista'
+    serviceType: 'clínico' as 'pediatría' | 'clínico' | 'ecografía' | 'psiquiatría' | 'odontología' | 'nutrición'
   });
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
@@ -31,6 +31,8 @@ export default function Patients() {
   const [loadingQueue, setLoadingQueue] = useState(true);
   const [isStartingVisit, setIsStartingVisit] = useState(false);
   const [selectedVisitForVitals, setSelectedVisitForVitals] = useState<PatientVisit | null>(null);
+  const [selectedServiceForVitals, setSelectedServiceForVitals] = useState<PatientVisit['serviceType']>('clínico');
+  const [selectedServiceForExistingPatient, setSelectedServiceForExistingPatient] = useState<PatientVisit['serviceType']>('clínico');
   const [isEditingHistory, setIsEditingHistory] = useState(false);
   const [editingHistoryText, setEditingHistoryText] = useState('');
   const [vitals, setVitals] = useState<Vitals>({
@@ -45,6 +47,18 @@ export default function Patients() {
 
   const [allActiveVisits, setAllActiveVisits] = useState<PatientVisit[]>([]);
 
+  const getServiceLabel = (type?: string) => {
+    switch (type) {
+      case 'nutrición': return 'Nutrición';
+      case 'odontología': return 'Odontología';
+      case 'psiquiatría': return 'Psiquiatría';
+      case 'ecografía': return 'Ecografía';
+      case 'pediatría': return 'Pediatría';
+      case 'clínico': return 'Clínico';
+      default: return type || 'Consulta';
+    }
+  };
+
   useEffect(() => {
     // Inicio del día actual (00:00) para reiniciar turnos diariamente
     const today = new Date();
@@ -53,26 +67,25 @@ export default function Patients() {
 
     const qQueue = query(
       collection(db, 'visits'),
-      where('status', '==', 'checkin'),
-      where('date', '>=', timeLimit),
-      orderBy('date', 'asc'),
-      limit(100)
+      where('status', '==', 'checkin')
     );
 
     const unsubQueue = onSnapshot(qQueue, (snap) => {
-      setDailyQueue(snap.docs.map(d => d.data() as PatientVisit));
+      const activeCheckins = snap.docs.map(d => d.data() as PatientVisit)
+        .filter(v => v.date >= timeLimit)
+        .sort((a, b) => a.date.localeCompare(b.date));
+      setDailyQueue(activeCheckins);
       setLoadingQueue(false);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits_queue'));
 
     // Monitor ALL active visits (not just checkin) to prevent double admission
     const qActive = query(
-      collection(db, 'visits'),
-      where('status', 'in', ['checkin', 'espera', 'atendiendo']),
-      where('date', '>=', timeLimit),
-      limit(500)
+      collection(db, 'visits')
     );
     const unsubActive = onSnapshot(qActive, (snap) => {
-      setAllActiveVisits(snap.docs.map(d => d.data() as PatientVisit));
+      const allActive = snap.docs.map(d => d.data() as PatientVisit)
+        .filter(v => ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'].includes(v.status) && v.date >= timeLimit);
+      setAllActiveVisits(allActive);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'active_visits'));
 
     const qPatients = query(collection(db, 'patients'), orderBy('name'), limit(100));
@@ -102,6 +115,7 @@ export default function Patients() {
   useEffect(() => {
     let unsubHistory: (() => void) | undefined;
     if (selectedPatient) {
+      setSelectedServiceForExistingPatient(selectedPatient.category === 'Niño' ? 'pediatría' : 'clínico');
       unsubHistory = fetchHistory(selectedPatient.id);
       setEditingHistoryText(selectedPatient.clinicalHistory || '');
     }
@@ -120,12 +134,12 @@ export default function Patients() {
       
       if (docSnap.exists()) {
         const existingData = docSnap.data() as Patient;
-        const confirmCheckIn = window.confirm(`El paciente "${existingData.name}" ya está registrado con este DNI. ¿Desea iniciar una visita para ${newPatient.serviceType} ahora?`);
-        if (confirmCheckIn) {
-          setIsRegistering(false);
-          setNewPatient({ dni: '', name: '', age: '', location: '', phone: '', category: 'Adulto', serviceType: 'clínico', guardianName: '', guardianRelation: 'Madre' });
-          await handleCheckIn(existingData, newPatient.serviceType);
-        }
+      const confirmCheckIn = window.confirm(`El paciente "${existingData.name}" ya está registrado con este DNI. ¿Desea iniciar una visita para ${newPatient.serviceType} ahora?`);
+      if (confirmCheckIn) {
+        setIsRegistering(false);
+        setNewPatient({ dni: '', name: '', age: '', location: '', phone: '', category: 'Adulto', serviceType: 'clínico', guardianName: '', guardianRelation: 'Madre' });
+        await handleCheckIn(existingData, newPatient.serviceType);
+      }
         setIsSubmitting(false);
         return;
       }
@@ -149,8 +163,7 @@ export default function Patients() {
       const visitId = doc(collection(db, 'visits')).id;
       
       // Specialist Direct Routing or Clinical Flow
-      const isSpecialist = ['ecografía', 'psiquiatra', 'odontología', 'nutricionista'].includes(newPatient.serviceType);
-      const status = isSpecialist ? 'espera' : (newPatient.category === 'Niño' ? 'checkin' : 'espera');
+      const status = newPatient.category === 'Niño' ? 'checkin' : 'espera';
 
       const visitData: PatientVisit = {
         id: visitId,
@@ -163,6 +176,8 @@ export default function Patients() {
         date: new Date().toISOString(),
         status,
         serviceType: newPatient.serviceType,
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         vitals: {
           date: new Date().toISOString(),
           weight: '',
@@ -193,7 +208,7 @@ export default function Patients() {
       });
       setSelectedPatient(patientData);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'patients/batch');
+      handleFirestoreError(err, OperationType.CREATE, `registration/patients/${newPatient.dni}/visits (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -211,12 +226,14 @@ export default function Patients() {
       today.setHours(today.getHours() - 12);
       const q = query(
         collection(db, 'visits'),
-        where('patientId', '==', patient.id),
-        where('status', 'in', ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista']),
-        where('date', '>=', today.toISOString())
+        where('patientId', '==', patient.id)
       );
       const snap = await getDocs(q);
-      if (!snap.empty) {
+      const activeVisits = snap.docs.map(d => d.data() as PatientVisit).filter(v => 
+        ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'].includes(v.status) &&
+        v.date >= today.toISOString()
+      );
+      if (activeVisits.length > 0) {
         alert('Este paciente ya tiene una consulta en curso hoy.');
         return;
       }
@@ -224,8 +241,7 @@ export default function Patients() {
       const visitId = doc(collection(db, 'visits')).id;
       
       // Specialist Direct Routing or Clinical Flow
-      const isSpecialist = ['ecografía', 'psiquiatra', 'odontología', 'nutricionista'].includes(finalService);
-      const status = isSpecialist ? 'espera' : (patient.category === 'Niño' ? 'checkin' : 'espera');
+      const status = patient.category === 'Niño' ? 'checkin' : 'espera';
 
       const visitData: PatientVisit = {
         id: visitId,
@@ -238,6 +254,8 @@ export default function Patients() {
         date: new Date().toISOString(),
         status,
         serviceType: finalService,
+        updatedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         vitals: {
           date: new Date().toISOString(),
           weight: '',
@@ -255,7 +273,8 @@ export default function Patients() {
 
       alert(`Turno asignado correctamente para ${patient.name} en ${finalService}.`);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'visits_checkin');
+      alert(`Error al registrar el turno: ${err instanceof Error ? err.message : String(err)}`);
+      handleFirestoreError(err, OperationType.CREATE, `checkin/patients/${patient.id}/visits (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -270,6 +289,8 @@ export default function Patients() {
     
     setIsSubmitting(true);
     try {
+      const isSpecialist = ['ecografía', 'psiquiatría', 'odontología', 'nutrición'].includes(selectedServiceForVitals || '');
+      
       const visitData: PatientVisit = {
         id: visitId,
         patientId: selectedPatient.id,
@@ -279,7 +300,9 @@ export default function Patients() {
         location: selectedPatient.location || '',
         category: selectedPatient.category,
         date: new Date().toISOString(), // Actualizar fecha para ir al final de la cola de consulta
-        status: 'espera', // Pasa a espera (sala de espera médica)
+        status: 'espera', // Pasa a espera
+        serviceType: selectedServiceForVitals,
+        updatedAt: new Date().toISOString(),
         vitals: {
           ...vitals,
           date: new Date().toISOString(),
@@ -303,7 +326,7 @@ export default function Patients() {
         recordedBy: ''
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'visits_vitals');
+      handleFirestoreError(err, OperationType.UPDATE, `vitals/patients/${selectedPatient.id}/visits/${visitId} (and root)`);
     } finally {
       setIsSubmitting(false);
     }
@@ -360,8 +383,8 @@ export default function Patients() {
   // Admission View: Show registry always for better navigation
   // Nurse View: Only show Queue, no history/list
   const isNurseOnly = isNurse && !isAdmin && !isDoctor;
-  const showQueue = canEditVitals && dailyQueue.length > 0;
-  const filteredQueue = dailyQueue.filter(v => v.category === 'Niño'); // Nurse only sees pediatric for Biometría
+  const filteredQueue = dailyQueue.filter(v => v.category === 'Niño' && patients.some(p => p.id === v.patientId)); // Nurse only sees pediatric for Biometría, and only if patient exists
+  const showQueue = canEditVitals && filteredQueue.length > 0;
   const showList = !isNurseOnly;
 
   const showHistory = isDoctor || isAdmin || isNutritionist;
@@ -453,6 +476,7 @@ export default function Patients() {
                   if (p) {
                     setSelectedPatient(p);
                     setSelectedVisitForVitals(visit);
+                    setSelectedServiceForVitals(visit.serviceType || (p.category === 'Niño' ? 'pediatría' : 'clínico'));
                     setIsStartingVisit(true);
                   }
                 }}
@@ -500,6 +524,17 @@ export default function Patients() {
               </h3>
             </div>
           <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-2">
+            {filteredPatients.length === 0 && searchTerm && (
+              <div className="flex flex-col items-center justify-center p-12 text-center animate-in fade-in zoom-in-95 duration-500 bg-white border border-slate-100 rounded-[2rem]">
+                <div className="w-16 h-16 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200 mb-4">
+                  <Search className="h-8 w-8" />
+                </div>
+                <h4 className="text-sm font-black text-slate-400 uppercase tracking-widest">Sin coincidencias</h4>
+                <p className="text-[10px] text-slate-300 font-bold uppercase tracking-tighter mt-1 max-w-[200px]">
+                  No hay pacientes con DNI o nombre "{searchTerm}".
+                </p>
+              </div>
+            )}
             {filteredPatients.map(p => (
               <div 
                 key={p.id}
@@ -642,7 +677,16 @@ export default function Patients() {
                           return;
                         }
                         setSelectedVisitForVitals(null);
+                        setSelectedServiceForVitals(selectedPatient.category === 'Niño' ? 'pediatría' : 'clínico');
                         setIsStartingVisit(true);
+                        setVitals({
+                          date: new Date().toISOString(),
+                          weight: '',
+                          height: '',
+                          temperature: '',
+                          bloodPressure: '',
+                          recordedBy: profile?.uid || ''
+                        });
                       }}
                       disabled={isInQueue}
                       className={cn(
@@ -656,18 +700,34 @@ export default function Patients() {
                     </button>
                   )}
                   {isAdmission && !canEditVitals && (
-                    <button 
-                      onClick={() => handleCheckIn(selectedPatient)}
-                      disabled={isInQueue}
-                      className={cn(
-                        "w-full sm:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl",
-                        isInQueue 
-                          ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
-                          : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                      {!isInQueue && (
+                        <select 
+                          className="w-full sm:w-auto px-4 py-3 bg-blue-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 transition-all appearance-none cursor-pointer"
+                          value={selectedServiceForExistingPatient}
+                          onChange={e => setSelectedServiceForExistingPatient(e.target.value as any)}
+                        >
+                          <option value="pediatría" disabled={selectedPatient.category === 'Adulto'}>Pediatría</option>
+                          <option value="clínico" disabled={selectedPatient.category === 'Niño'}>Clínico (Adultos)</option>
+                          <option value="ecografía">Ecografía</option>
+                          <option value="psiquiatría">Psiquiatría</option>
+                          <option value="odontología">Odontología</option>
+                          <option value="nutrición">Nutrición</option>
+                        </select>
                       )}
-                    >
-                      {isInQueue ? getStatusLabel(activeVisit?.status || '') : 'Derivar a Biometría'}
-                    </button>
+                      <button 
+                        onClick={() => handleCheckIn(selectedPatient, selectedServiceForExistingPatient)}
+                        disabled={isInQueue}
+                        className={cn(
+                          "w-full sm:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl whitespace-nowrap",
+                          isInQueue 
+                            ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
+                            : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
+                        )}
+                      >
+                        {isInQueue ? getStatusLabel(activeVisit?.status || '') : (selectedPatient.category === 'Adulto' ? 'Enviar a Sala de Espera' : 'Derivar a Biometría')}
+                      </button>
+                    </div>
                   )}
                   {/* Manual check-in button removed per user request for automation */}
                 </div>
@@ -755,9 +815,18 @@ export default function Patients() {
                           <div className="flex flex-col md:flex-row justify-between gap-6">
                             <div className="flex-1 space-y-6">
                               <div className="flex items-center justify-between">
-                                <span className="text-sm font-black text-slate-800">
-                                  {format(new Date(visit.date), 'EEEE dd/MM/yyyy', { locale: es })}
-                                </span>
+                                <div className="flex items-center gap-3">
+                                  <span className="text-sm font-black text-slate-800">
+                                    {format(new Date(visit.date), 'EEEE dd/MM/yyyy', { locale: es })}
+                                  </span>
+                                  <span className={cn(
+                                    "px-3 py-1 text-[9px] font-black uppercase tracking-widest rounded-lg border",
+                                    visit.serviceType === 'odontología' ? "bg-purple-50 text-purple-600 border-purple-100" :
+                                    visit.serviceType === 'nutrición' ? "bg-emerald-50 text-emerald-600 border-emerald-100" :
+                                    "bg-blue-50 text-blue-600 border-blue-100"
+                                  )}>
+                                    {getServiceLabel(visit.serviceType)}
+                                  </span>                                </div>
                                 <span className={cn(
                                   "text-[9px] font-black uppercase tracking-widest px-3 py-1 rounded-full",
                                   visit.status === 'atendido' ? "bg-emerald-100 text-emerald-700" : 
@@ -812,7 +881,7 @@ export default function Patients() {
                                     </p>
                                   </div>
                                   <div>
-                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-2">Evolución Médica</span>
+                                    <span className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em] block mb-2">Evolución Médica ({getServiceLabel(visit.serviceType)})</span>
                                     <p className="text-xs text-slate-700 font-bold leading-relaxed">
                                       {visit.evolution.notes}
                                     </p>
@@ -881,7 +950,7 @@ export default function Patients() {
       {/* Register Patient Modal */}
       {isRegistering && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-200">
             <form onSubmit={handleRegisterPatient} className="p-10">
               <div className="flex justify-between items-start mb-8">
                 <div>
@@ -974,26 +1043,28 @@ export default function Patients() {
                   </div>
                 </div>
 
-                <div>
-                   <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1.5 block ml-1">Servicio / Especialidad</label>
-                   <div className="relative">
-                     <select 
-                       className="w-full px-4 py-3 bg-blue-50/50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 transition-all appearance-none cursor-pointer"
-                       value={newPatient.serviceType}
-                       onChange={e => setNewPatient({...newPatient, serviceType: e.target.value as any})}
-                     >
-                       <option value="pediatría" disabled={newPatient.category === 'Adulto'}>Pediatría</option>
-                       <option value="clínico" disabled={newPatient.category === 'Niño'}>Clínico (Adultos)</option>
-                       <option value="ecografía">Ecografía</option>
-                       <option value="psiquiatra">Psiquiatra</option>
-                       <option value="odontología">Odontología</option>
-                       <option value="nutricionista">Nutricionista</option>
-                     </select>
-                     <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-blue-400">
-                       <ArrowRight className="h-3 w-3 rotate-90" />
+                {!isNurse && (
+                  <div>
+                     <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1.5 block ml-1">Servicio / Especialidad</label>
+                     <div className="relative">
+                       <select 
+                         className="w-full px-4 py-3 bg-blue-50/50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 transition-all appearance-none cursor-pointer"
+                         value={newPatient.serviceType}
+                         onChange={e => setNewPatient({...newPatient, serviceType: e.target.value as any})}
+                       >
+                         <option value="pediatría" disabled={newPatient.category === 'Adulto'}>Pediatría</option>
+                         <option value="clínico" disabled={newPatient.category === 'Niño'}>Clínico (Adultos)</option>
+                         <option value="ecografía">Ecografía</option>
+                         <option value="psiquiatría">Psiquiatría</option>
+                         <option value="odontología">Odontología</option>
+                         <option value="nutrición">Nutrición</option>
+                       </select>
+                       <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-blue-400">
+                         <ArrowRight className="h-3 w-3 rotate-90" />
+                       </div>
                      </div>
-                   </div>
-                </div>
+                  </div>
+                )}
 
                 {/* Guardian info for Children */}
                 {newPatient.category === 'Niño' && (
@@ -1050,7 +1121,7 @@ export default function Patients() {
       {/* Start Visit / Vitals Modal */}
       {isStartingVisit && selectedPatient && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-y-auto max-h-[90vh] animate-in zoom-in-95 duration-200">
             <form onSubmit={handleStartVisit} className="p-10">
               <div className="flex justify-between items-start mb-8">
                 <div>
@@ -1071,6 +1142,9 @@ export default function Patients() {
                 <div>
                   <p className="text-sm font-bold text-slate-800">{selectedPatient.name}</p>
                   <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">DNI: {selectedPatient.dni}</p>
+                  <p className="text-[9px] font-black text-blue-600 uppercase tracking-widest mt-1">
+                    Servicio: {getServiceLabel(selectedServiceForVitals)}
+                  </p>
                 </div>
               </div>
 

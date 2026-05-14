@@ -5,7 +5,7 @@
 - **Order**: Can only be created by an authenticated `doctor`. `status` must start as `Pendiente`.
 - **Order Delivery**: Only a user with `role == 'pharmacy'` can change status from `Pendiente` to `Entregado`.
 - **Stock Sync**: When an order is marked `Entregado`, the corresponding medicine's `stock` must be decremented by 1 in the same transaction (batch).
-- **Users**: Users cannot change their own `role`.
+- **Users**: Users cannot change their own `role` or `isPending` status. Profile completion must only affect allowed fields.
 
 ## 2. The "Dirty Dozen" Payloads (Denial Tests)
 1. Create Medicine with negative stock.
@@ -20,6 +20,7 @@
 10. Create an Order with status 'Entregado' initially.
 11. Update Order status from 'Entregado' back to 'Pendiente'.
 12. Create Medicine with a 2MB name string.
+13. Update own `role` or `isPending` during profile completion.
 
 ## 3. Test Runner Concept
 The `firestore.rules` will be validated against these invariants.

@@ -1,6 +1,6 @@
 {
   "name": "ClinicoStock - Gestión de Farmacia",
-  "description": "Sistema de gestión de red asistencial para Fundación Valores con control de inventario y pedidos en tiempo real.",
+  "description": "Plataforma clínica de alta gama para la gestión asistencial y control de stock farmacológico en tiempo real.",
   "requestFramePermissions": [],
   "majorCapabilities": []
 }

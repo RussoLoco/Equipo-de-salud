@@ -1,144 +1,84 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. Global Safety Net
     match /{document=**} {
       allow read, write: if false;
     }
 
-    // --- Helpers ---
     function isSignedIn() { return request.auth != null; }
     function isSuper() { 
       return isSignedIn() && request.auth.token.email == 'davidhhgg620@gmail.com'; 
     }
-    
-    function getUserRole() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    
-    function isAdmin() { 
+    function hasAnyRole(roles) {
       return isSignedIn() && (
         isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserRole() == 'admin')
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role in roles)
       );
     }
     
-    function isPharmacy() { 
-      return isSignedIn() && (
-        isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'pharmacy'))
-      );
+    function isAdmin() { return hasAnyRole(['admin']); }
+    function isPharmacy() { return hasAnyRole(['admin', 'pharmacy']); }
+    function isDoctor() { return hasAnyRole(['admin', 'doctor']); }
+    function isAdmission() { return hasAnyRole(['admin', 'admission']); }
+    function isNurse() { return hasAnyRole(['admin', 'nurse']); }
+    function isNutritionist() { return hasAnyRole(['admin', 'nutritionist']); }
+    function isSpecialist() { return hasAnyRole(['admin', 'ecografista', 'psiquiatra', 'odontologo']); }
+    function isStaff() {
+      return hasAnyRole(['admin', 'doctor', 'nurse', 'admission', 'nutritionist', 'ecografista', 'psiquiatra', 'odontologo']);
     }
-    
-    function isDoctor() { 
-      return isSignedIn() && (
-        isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'doctor'))
-      );
-    }
-    
-    function isAdmission() { 
-      return isSignedIn() && (
-        isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'admission'))
-      );
-    }
-    
-    function isNurse() { 
-      return isSignedIn() && (
-        isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'nurse'))
-      );
-    }
-
-    function isNutritionist() { 
-      return isSignedIn() && (
-        isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'nutritionist'))
-      );
-    }
-
-    function isSpecialist() {
-      return isSignedIn() && (
-        isSuper() || 
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (getUserRole() == 'admin' || getUserRole() == 'ecografista' || getUserRole() == 'psiquiatra' || getUserRole() == 'odontologo'))
-      );
-    }
-
     function isRestrictedSpecialist() {
-      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
-             (getUserRole() == 'ecografista' || getUserRole() == 'psiquiatra' || getUserRole() == 'odontologo');
+      return isSignedIn() && !isSuper() && (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role in ['ecografista', 'psiquiatra', 'odontologo']);
     }
-    
     function isValidId(id) { 
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_ .+\\-()#:]+$'); 
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_ .+()#:-]+$'); 
     }
-    
     function incoming() { return request.resource.data; }
     function existing() { return resource.data; }
 
-    // --- Validation Blueprints ---
     function isValidPatient(data) {
       return data.keys().hasAll(['id', 'dni', 'name', 'createdAt'])
         && data.id is string
         && data.dni is string
-        && data.name is string
-        && (data.category == null || data.category in ['Adulto', 'Niño'])
-        && (data.guardianName == null || data.guardianName is string)
-        && (data.guardianRelation == null || data.guardianRelation in ['Madre', 'Padre', 'Familiar']);
+        && data.name is string;
     }
 
     function isValidVisit(data) {
-      // For updates, we might only have a subset of keys. 
-      // If we are performing an update, skip hasAll(required) and rely on individual field validation.
-      return (data.status == null || data.status in ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista', 'atendido'])
+      return (data.status == null || data.status in ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista', 'atendido', 'anulado'])
         && (data.patientId == null || data.patientId is string)
-        && (data.id == null || data.id is string)
-        && (data.category == null || data.category in ['Adulto', 'Niño'])
-        && (data.serviceType == null || data.serviceType in ['pediatría', 'clínico', 'ecografía', 'psiquiatra', 'odontología', 'nutricionista']);
+        && (data.serviceType == null || data.serviceType in ['pediatría', 'clínico', 'ecografía', 'psiquiatra', 'psiquiatría', 'odontología', 'odontólogo', 'odontologo', 'nutricionista', 'nutrición', 'farmacia', 'laboratorio']);
     }
 
     function isValidMedicine(data) {
-      let requiredFields = ['drugId', 'drug', 'category', 'presentation', 'laboratory', 'location', 'stock'];
-      return data.keys().hasAll(requiredFields)
-        && data.drugId is string && data.drugId.size() <= 128
-        && data.drug is string && data.drug.size() <= 600
-        && data.category in ['Niño', 'Adulto']
-        && data.stock is string;
+      return data.keys().hasAll(['drugId', 'drug', 'category', 'location', 'stock'])
+        && data.drugId is string;
     }
 
     function isValidOrder(data) {
-      let required = ['orderId', 'date', 'doctorId', 'doctorName', 'items', 'status', 'location', 'patientId', 'patientName', 'patientDni'];
-      // Allow for deliveredAt if it's an update, but create starts with 10
-      return data.keys().hasAll(required)
-        && data.keys().size() >= 10
-        && data.keys().size() <= 11
-        && data.orderId is string && data.orderId.size() <= 100
-        && data.status in ['Pendiente', 'Entregado']
-        && data.doctorId == request.auth.uid
-        && data.items is list
-        && data.items.size() > 0;
+      return data.keys().hasAll(['orderId', 'date', 'doctorId', 'doctorName', 'items', 'status'])
+        && data.orderId is string;
     }
 
-    // --- Rules ---
+    function isValidUser(data) {
+      return data.name is string;
+    }
 
     match /users/{userId} {
       allow get: if isSignedIn() && (request.auth.uid == userId || isSuper());
-      allow list: if isSuper() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserRole() == 'admin');
-      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow list: if isSuper() || (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'admin');
+      allow create: if isSignedIn() && request.auth.uid == userId && isValidUser(incoming());
       allow update: if isSignedIn() && (
         isAdmin() || 
-        (request.auth.uid == userId && incoming().role == existing().role && incoming().isPending == existing().isPending)
+        (request.auth.uid == userId && isValidUser(incoming()))
       );
     }
 
     match /inventory/{drugId} {
       allow read: if isSignedIn();
       allow create: if !isRestrictedSpecialist() && (isPharmacy() || isAdmin()) && isValidId(drugId) && isValidMedicine(incoming());
-      allow update: if !isRestrictedSpecialist() && (isPharmacy() || isAdmin()) && (
-          isValidMedicine(incoming()) || 
-          incoming().diff(existing()).affectedKeys().hasOnly(['stock'])
-        );
+      allow update: if !isRestrictedSpecialist() && (isPharmacy() || isAdmin()) && isValidMedicine(incoming());
       allow delete: if !isRestrictedSpecialist() && (isPharmacy() || isDoctor() || isAdmin());
     }
 
@@ -147,7 +87,7 @@ service cloud.firestore {
       allow list: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
       allow create: if !isRestrictedSpecialist() && isDoctor() && isValidOrder(incoming()) && incoming().status == 'Pendiente';
       allow update: if !isRestrictedSpecialist() && (
-          (isPharmacy() && incoming().status == 'Entregado' && existing().status == 'Pendiente' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'deliveredAt']))
+          (isPharmacy() && incoming().status == 'Entregado' && existing().status == 'Pendiente')
           || (isDoctor() && existing().status == 'Pendiente' && isValidOrder(incoming()))
         );
       allow delete: if isAdmin();
@@ -165,26 +105,23 @@ service cloud.firestore {
     }
 
     match /patients/{patientId} {
-      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isSpecialist() || isAdmin() || isSuper());
+      allow read: if isSignedIn() && isStaff();
       allow create: if (isAdmission() || isAdmin()) && isValidPatient(incoming());
-      allow update: if (isAdmission() || isDoctor() || isSpecialist() || isAdmin()) && (
-          isValidPatient(incoming()) || 
-          (incoming().diff(existing()).affectedKeys().hasOnly(['clinicalHistory']))
-        );
+      allow update: if (isAdmission() || isDoctor() || isSpecialist() || isAdmin());
       allow delete: if isAdmin();
       
       match /visits/{visitId} {
-        allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isSpecialist() || isAdmin() || isSuper());
-        allow create: if (isNurse() || isAdmission()) && incoming().keys().hasAll(['id', 'patientId', 'patientName', 'patientDni', 'category', 'date', 'status', 'vitals']) && isValidVisit(incoming());
-        allow update: if (isDoctor() || isNurse() || isSpecialist() || isAdmin() || isSuper()) && isValidVisit(incoming());
+        allow read: if isSignedIn() && isStaff();
+        allow create: if isSuper() || isStaff() && isValidVisit(incoming());
+        allow update: if isSuper() || isStaff() && isValidVisit(incoming());
         allow delete: if isAdmin();
       }
     }
 
     match /visits/{visitId} {
-      allow read: if isSignedIn() && (isAdmission() || isDoctor() || isNurse() || isNutritionist() || isSpecialist() || isAdmin() || isSuper());
-      allow create: if (isNurse() || isAdmission()) && incoming().keys().hasAll(['id', 'patientId', 'patientName', 'patientDni', 'category', 'date', 'status', 'vitals']) && isValidVisit(incoming());
-      allow update: if (isDoctor() || isNurse() || isSpecialist() || isAdmin() || isSuper()) && isValidVisit(incoming());
+      allow read: if isSignedIn() && isStaff();
+      allow create: if isSuper() || isStaff() && isValidVisit(incoming());
+      allow update: if isSuper() || isStaff() && isValidVisit(incoming());
       allow delete: if isAdmin();
     }
   }

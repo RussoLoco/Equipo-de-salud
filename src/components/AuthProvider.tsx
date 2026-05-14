@@ -4,6 +4,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, loginWithGoogle, logout, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { LogIn, Loader2 } from 'lucide-react';
+import ProfileSetup from './ProfileSetup';
 
 interface AuthContextType {
   user: User | null;
@@ -14,6 +15,7 @@ interface AuthContextType {
   signIn: () => Promise<void>;
   signOut: () => Promise<void>;
   toggleAdminView: (role: UserRole) => void;
+  openProfileEdit: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -23,6 +25,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [adminViewRole, setAdminViewRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
 
   const superAdminEmail = import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'davidhhgg620@gmail.com';
   const isSuperAdmin = user?.email === superAdminEmail;
@@ -44,9 +47,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               uid: user.uid,
               email: user.email || '',
               name: user.displayName || 'Usuario',
+              lastName: '',
+              photoURL: user.photoURL || '',
               role: defaultRole as any,
               phone: '',
-              isPending: !isSuper
+              isPending: !isSuper,
+              profileCompleted: false
             };
             await setDoc(docRef, newProfile);
             setProfile(newProfile);
@@ -64,8 +70,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsub();
   }, []);
 
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const signIn = async () => {
-    await loginWithGoogle();
+    try {
+      setAuthError(null);
+      const user = await loginWithGoogle();
+      if (!user) {
+        setAuthError('El inicio de sesión fue cancelado o bloqueado por el navegador.');
+      }
+    } catch (error: any) {
+      setAuthError('Error al iniciar sesión. Por favor, intente de nuevo.');
+    }
   };
 
   const handleSignOut = async () => {
@@ -76,6 +92,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (isSuperAdmin || profile?.role === 'admin') {
       setAdminViewRole(role);
     }
+  };
+
+  const openProfileEdit = () => {
+    setIsEditingProfile(true);
   };
 
   const activeRole = (isSuperAdmin || profile?.role === 'admin') && adminViewRole ? adminViewRole : profile?.role || null;
@@ -89,14 +109,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       isSuperAdmin,
       signIn, 
       signOut: handleSignOut,
-      toggleAdminView
+      toggleAdminView,
+      openProfileEdit
     }}>
       {loading ? (
         <div className="flex h-screen w-full items-center justify-center bg-slate-50">
           <Loader2 className="h-10 w-10 animate-spin text-blue-600" />
         </div>
       ) : user && profile ? (
-        children
+        (!profile.profileCompleted || isEditingProfile) ? (
+          <ProfileSetup 
+            profile={profile} 
+            onComplete={(updated) => {
+              setProfile(updated);
+              setIsEditingProfile(false);
+            }} 
+            onSignOut={handleSignOut}
+            onCancel={profile.profileCompleted ? () => setIsEditingProfile(false) : undefined}
+          />
+        ) : (
+          children
+        )
       ) : (
         <div className="flex h-screen w-full flex-col items-center justify-center bg-slate-100 p-6 text-center font-sans">
           <div className="mb-8 rounded-3xl bg-white p-12 shadow-2xl shadow-slate-200 border border-slate-200 max-w-sm w-full">
@@ -112,6 +145,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             <p className="mb-10 text-slate-400 text-sm font-bold uppercase tracking-widest">Gestión Médica y Farmacéutica</p>
             
             <div className="space-y-4">
+              {authError && (
+                <div className="mb-4 rounded-xl bg-red-50 p-3 text-[10px] font-bold uppercase tracking-widest text-red-500 border border-red-100 animate-in fade-in slide-in-from-top-2">
+                  {authError}
+                </div>
+              )}
               <button
                 onClick={signIn}
                 className="flex w-full items-center justify-center gap-3 rounded-xl bg-slate-900 px-8 py-4 font-bold text-white transition-all hover:bg-slate-800 active:scale-95 shadow-lg shadow-slate-200 uppercase text-xs tracking-widest"
