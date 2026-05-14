@@ -651,11 +651,11 @@ export default function Patients() {
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex flex-col sm:flex-row min-[70.625rem]:flex-col min-[93.75rem]:flex-row sm:items-center min-[70.625rem]:items-stretch min-[93.75rem]:items-center gap-4">
                   {isAdmin && (
                     <button 
                       onClick={() => handleDeletePatient(selectedPatient.id)}
-                      className="w-full sm:w-auto px-6 py-4 bg-white border border-red-200 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all shadow-sm flex items-center gap-2"
+                      className="w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-6 py-4 bg-white border border-red-200 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all shadow-sm flex items-center justify-center gap-2"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                       Eliminar
@@ -664,7 +664,7 @@ export default function Patients() {
                   {isDoctor && (
                     <button 
                       onClick={() => setIsEditingHistory(true)}
-                      className="w-full sm:w-auto px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm"
+                      className="w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-6 py-4 bg-white border border-slate-200 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:border-blue-600 hover:text-blue-600 transition-all shadow-sm flex justify-center"
                     >
                       Actualizar H. Clínica
                     </button>
@@ -690,7 +690,7 @@ export default function Patients() {
                       }}
                       disabled={isInQueue}
                       className={cn(
-                        "w-full sm:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl",
+                        "w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl flex justify-center",
                         isInQueue 
                           ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
                           : "bg-slate-900 text-white hover:bg-blue-600 shadow-slate-200"
@@ -700,10 +700,10 @@ export default function Patients() {
                     </button>
                   )}
                   {isAdmission && !canEditVitals && (
-                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                    <div className="flex flex-col sm:flex-row min-[70.625rem]:flex-col min-[93.75rem]:flex-row gap-2 w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto">
                       {!isInQueue && (
                         <select 
-                          className="w-full sm:w-auto px-4 py-3 bg-blue-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 transition-all appearance-none cursor-pointer"
+                          className="w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-4 py-3 bg-blue-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-200 transition-all appearance-none cursor-pointer"
                           value={selectedServiceForExistingPatient}
                           onChange={e => setSelectedServiceForExistingPatient(e.target.value as any)}
                         >
@@ -719,7 +719,7 @@ export default function Patients() {
                         onClick={() => handleCheckIn(selectedPatient, selectedServiceForExistingPatient)}
                         disabled={isInQueue}
                         className={cn(
-                          "w-full sm:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl whitespace-nowrap",
+                          "w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl whitespace-nowrap",
                           isInQueue 
                             ? "bg-slate-100 text-slate-400 cursor-not-allowed shadow-none" 
                             : "bg-blue-600 text-white hover:bg-blue-700 shadow-blue-100"
