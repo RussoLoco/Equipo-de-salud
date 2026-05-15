@@ -26,6 +26,7 @@ export default function Patients() {
     serviceType: 'clínico' as 'pediatría' | 'clínico' | 'ecografía' | 'psiquiatría' | 'odontología' | 'nutrición'
   });
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
   const [dailyQueue, setDailyQueue] = useState<PatientVisit[]>([]);
   const [loadingQueue, setLoadingQueue] = useState(true);
@@ -356,16 +357,34 @@ export default function Patients() {
   };
 
   const handleDeletePatient = async (patientId: string) => {
-    if (!isAdmin || !window.confirm('¿Estás seguro de que deseas eliminar permanentemente a este paciente y todo su historial?')) return;
+    if (!isAdmin) return;
     
     setIsSubmitting(true);
+    setDeletingPatientId(null);
     try {
-      await deleteDoc(doc(db, 'patients', patientId));
+      // 1. Get all visits for the patient from the subcollection
+      const visitsSnap = await getDocs(collection(db, `patients/${patientId}/visits`));
+      const batch = writeBatch(db);
+      
+      // 2. Add subcollection deletions to batch AND corresponding global visits
+      visitsSnap.docs.forEach(v => {
+        batch.delete(v.ref);
+        // Also delete from global visits collection
+        batch.delete(doc(db, 'visits', v.id));
+      });
+      
+      // 3. Add patient deletion to batch
+      batch.delete(doc(db, 'patients', patientId));
+      
+      await batch.commit();
+
       if (selectedPatient?.id === patientId) {
         setSelectedPatient(null);
       }
       alert('Paciente eliminado correctamente.');
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
+      alert('Error al eliminar paciente: ' + (err?.message || 'Error desconocido. Verifica los permisos de admin.'));
       handleFirestoreError(err, OperationType.DELETE, 'patients');
     } finally {
       setIsSubmitting(false);
@@ -580,19 +599,26 @@ export default function Patients() {
                 </div>
                 <div className="flex items-center gap-2">
                   {isAdmin && (
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeletePatient(p.id);
-                      }}
-                      className={cn(
-                        "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
-                        selectedPatient?.id === p.id ? "bg-red-500/20 text-red-100 hover:bg-red-500 hover:text-white" : "bg-slate-50 text-slate-300 hover:bg-red-50 hover:text-red-500"
-                      )}
-                      title="Eliminar Paciente"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    deletingPatientId === p.id ? (
+                      <div className="flex items-center gap-1 bg-red-50 p-1 rounded-xl">
+                        <button onClick={(e) => { e.stopPropagation(); handleDeletePatient(p.id); }} className="w-6 h-6 flex items-center justify-center bg-red-600 text-white rounded-lg hover:bg-red-700 text-[8px] font-black" title="Confirmar">SÍ</button>
+                        <button onClick={(e) => { e.stopPropagation(); setDeletingPatientId(null); }} className="w-6 h-6 flex items-center justify-center bg-white text-slate-500 rounded-lg hover:bg-slate-200 text-[8px] font-black" title="Cancelar">NO</button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletingPatientId(p.id);
+                        }}
+                        className={cn(
+                          "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
+                          selectedPatient?.id === p.id ? "bg-red-500/20 text-red-100 hover:bg-red-500 hover:text-white" : "bg-slate-50 text-slate-300 hover:bg-red-50 hover:text-red-500"
+                        )}
+                        title="Eliminar Paciente"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )
                   )}
                   <div className={cn(
                     "w-8 h-8 rounded-xl flex items-center justify-center transition-all",
@@ -659,13 +685,23 @@ export default function Patients() {
                 </div>
                 <div className="flex flex-col sm:flex-row min-[70.625rem]:flex-col min-[93.75rem]:flex-row sm:items-center min-[70.625rem]:items-stretch min-[93.75rem]:items-center gap-4">
                   {isAdmin && (
-                    <button 
-                      onClick={() => handleDeletePatient(selectedPatient.id)}
-                      className="w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-6 py-4 bg-white border border-red-200 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all shadow-sm flex items-center justify-center gap-2"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Eliminar
-                    </button>
+                    deletingPatientId === selectedPatient.id ? (
+                      <div className="w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto p-2 bg-red-50 border border-red-200 rounded-2xl flex flex-col gap-2">
+                        <span className="text-[10px] font-black uppercase text-red-600 text-center">¿ELIMINAR PACIENTE E HISTORIAL?</span>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleDeletePatient(selectedPatient.id)} className="flex-1 px-4 py-2 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase hover:bg-red-700">Sí</button>
+                          <button onClick={() => setDeletingPatientId(null)} className="flex-1 px-4 py-2 bg-white text-slate-500 border border-slate-200 rounded-xl text-[10px] font-black uppercase hover:bg-slate-50">Cancelar</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setDeletingPatientId(selectedPatient.id)}
+                        className="w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto px-6 py-4 bg-white border border-red-200 text-red-400 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-red-50 hover:text-red-600 transition-all shadow-sm flex items-center justify-center gap-2"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Eliminar
+                      </button>
+                    )
                   )}
                   {isDoctor && (
                     <button 

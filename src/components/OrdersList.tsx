@@ -195,20 +195,20 @@ export default function OrdersList() {
                   <div className="space-y-2.5">
                     {order.items.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-start bg-slate-50/50 p-4 rounded-2xl group-hover:bg-blue-50/30 border border-transparent group-hover:border-blue-50/50 transition-all">
-                        <div className="flex items-center gap-3">
-                          <Pill className="h-3.5 w-3.5 text-slate-300 group-hover:text-blue-400 transition-colors" />
-                          <div>
-                            <span className="text-xs font-bold text-slate-700 block">{item.drugName}</span>
-                            <div className="flex items-center gap-2 mt-1">
-                              {item.laboratory && <span className="text-[8px] font-bold text-slate-400/80 uppercase tracking-widest truncate max-w-[120px]">· {item.laboratory}</span>}
+                        <div className="flex items-start gap-3 flex-1 min-w-0 pr-4">
+                          <Pill className="h-3.5 w-3.5 mt-0.5 shrink-0 text-slate-300 group-hover:text-blue-400 transition-colors" />
+                          <div className="flex-1 min-w-0">
+                            <span className="text-xs font-bold text-slate-700 block whitespace-normal break-words leading-tight">{item.drugName}</span>
+                            <div className="flex flex-col gap-1.5 mt-1.5">
+                              {item.laboratory && <span className="text-[9px] font-bold text-slate-400/90 uppercase tracking-widest whitespace-normal break-words leading-tight">LAB: {item.laboratory}</span>}
                               <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none group-hover:text-blue-400/70 transition-colors flex items-center gap-1">
-                                <MapPin className="h-2.5 w-2.5" />
+                                <MapPin className="h-2.5 w-2.5 shrink-0" />
                                 Ubic: {item.location || '---'}
                               </span>
                             </div>
                           </div>
                         </div>
-                        <span className="text-[10px] font-black bg-white px-2.5 py-1 border border-slate-100 rounded-xl shadow-sm text-slate-600">
+                        <span className="text-[10px] font-black bg-white px-2.5 py-1 border border-slate-100 rounded-xl shadow-sm text-slate-600 shrink-0">
                           {item.quantity}
                         </span>
                       </div>
@@ -268,42 +268,51 @@ export default function OrdersList() {
         <div className="bg-white border border-slate-200 rounded-2xl sm:rounded-xl shadow-sm flex flex-col overflow-hidden">
           <div className="overflow-x-auto">
             {/* Desktop View Table */}
-            <table className="w-full text-left text-sm text-slate-600 hidden sm:table">
-              <thead>
-                <tr className="bg-slate-50 text-[10px] uppercase font-bold text-slate-400 tracking-widest border-b border-slate-100">
-                  <th className="px-6 py-4">Prescripción / Folio</th>
-                  <th className="px-6 py-4">Paciente</th>
-                  <th className="px-6 py-4">Fecha/Hora</th>
-                  <th className="px-6 py-4 text-right">Resultado</th>
+            <table className="w-full text-left text-sm text-slate-600 hidden sm:table border-separate border-spacing-0">
+              <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm border-b border-slate-100">
+                <tr className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">
+                  <th className="px-6 py-4 border-b border-slate-100 w-1/3">Prescripción / Folio</th>
+                  <th className="px-6 py-4 border-b border-slate-100 w-1/4">Paciente</th>
+                  <th className="px-6 py-4 border-b border-slate-100 w-1/4">Fecha/Hora</th>
+                  <th className="px-6 py-4 text-right border-b border-slate-100">Resultado</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-50">
+              <tbody className="divide-y divide-slate-50 bg-white">
                 {deliveredOrders.slice(0, 10).map((order) => (
-                  <tr key={order.orderId} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4">
-                        <div className="flex flex-wrap gap-1 mb-1">
+                  <tr key={order.orderId} className="hover:bg-slate-50/70 transition-colors group">
+                    <td className="px-6 py-5 align-top">
+                        <div className="flex flex-col gap-2 mb-2 w-full">
                           {order.items.map((item, idx) => (
-                            <span key={idx} className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex flex-col">
-                              <span>{item.drugName} (x{item.quantity})</span>
-                              {item.laboratory && <span className="text-[7px] text-slate-400 uppercase font-bold tracking-normal">· {item.laboratory}</span>}
-                              <span className="text-[7px] text-slate-400 uppercase font-black tracking-normal flex items-center gap-0.5">
-                                <MapPin className="h-2 w-2" /> {item.location || '---'}
+                            <div key={idx} className="bg-slate-50 border border-slate-100 rounded-xl p-3 flex flex-col gap-1 w-full shadow-sm group-hover:bg-white group-hover:border-slate-200 transition-colors">
+                              <span className="text-[12px] font-black text-slate-700 whitespace-normal break-words leading-snug">{item.drugName} <span className="text-[10px] font-black text-slate-400 shrink-0 ml-1 bg-white border border-slate-100 px-1.5 py-0.5 rounded-md">x{item.quantity}</span></span>
+                              {item.laboratory && <span className="text-[10px] text-slate-400 uppercase font-black tracking-widest whitespace-normal break-words mt-1 leading-snug">LAB: <span className="text-slate-500">{item.laboratory}</span></span>}
+                              <span className="text-[10px] text-slate-400 uppercase font-bold tracking-widest flex items-center gap-1.5 pt-2 mt-1 border-t border-slate-200/60">
+                                <MapPin className="h-3 w-3 shrink-0 text-slate-300" /> {item.location || '---'}
                               </span>
-                            </span>
+                            </div>
                           ))}
                         </div>
-                       <p className="text-[9px] font-mono text-slate-400 uppercase tracking-tighter">FOLIO: {order.orderId}</p>
+                       <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest mt-4 flex items-center gap-1.5">
+                         <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span> FOLIO: {order.orderId}
+                       </p>
                     </td>
-                    <td className="px-6 py-4">
-                      <p className="text-xs font-bold text-slate-700">{order.patientName || '---'}</p>
-                      <p className="text-[9px] font-medium text-slate-400">DNI: {order.patientDni || '---'}</p>
+                    <td className="px-6 py-5 align-top">
+                      <div className="bg-slate-50 rounded-xl p-3 border border-slate-100 group-hover:bg-white group-hover:border-slate-200 transition-colors">
+                        <p className="text-xs font-black text-slate-800 leading-tight mb-1">{order.patientName || 'Paciente Anónimo'}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">DNI: <span className="text-slate-500">{order.patientDni || '---'}</span></p>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 font-mono text-xs text-slate-400">
-                      {format(new Date(order.date), "dd/MM/yyyy HH:mm", { locale: es })}
+                    <td className="px-6 py-5 align-top">
+                      <div className="flex items-center gap-2 bg-slate-50 rounded-xl p-3 border border-slate-100 w-fit group-hover:bg-white group-hover:border-slate-200 transition-colors">
+                        <Clock className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="font-mono text-xs font-bold text-slate-500 tracking-tight">
+                          {format(new Date(order.date), "dd/MM/yyyy HH:mm", { locale: es })}
+                        </span>
+                      </div>
                     </td>
-                    <td className="px-6 py-4 text-right">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1 text-[10px] font-bold text-emerald-800 uppercase tracking-wide">
-                        Entregado
+                    <td className="px-6 py-5 align-top text-right">
+                      <span className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 border border-emerald-100 px-3 py-1.5 text-[10px] font-black text-emerald-600 uppercase tracking-widest shadow-sm">
+                        <Check className="h-3 w-3" /> Entregado
                       </span>
                     </td>
                   </tr>
@@ -312,28 +321,33 @@ export default function OrdersList() {
             </table>
 
             {/* Mobile View Cards */}
-            <div className="sm:hidden divide-y divide-slate-100">
+            <div className="sm:hidden flex flex-col divide-y divide-slate-100">
                {deliveredOrders.slice(0, 5).map((order) => (
-                 <div key={order.orderId} className="p-4 bg-white">
-                   <div className="flex justify-between items-start mb-2">
-                     <div>
-                        <p className="text-xs font-black text-slate-800">{order.patientName || 'Paciente Anónimo'}</p>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">DNI: {order.patientDni || '---'}</p>
+                 <div key={order.orderId} className="p-5 bg-white space-y-4">
+                   <div className="flex justify-between items-start gap-4">
+                     <div className="flex-1 min-w-0">
+                        <p className="text-sm font-black text-slate-800 leading-tight break-words whitespace-normal">{order.patientName || 'Paciente Anónimo'}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">DNI: {order.patientDni || '---'}</p>
                      </div>
-                     <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">ENTREGADO</span>
+                     <span className="text-[9px] font-black text-emerald-600 bg-emerald-50 border border-emerald-100 px-2.5 py-1 rounded-lg shrink-0 mt-0.5">ENTREGADO</span>
                    </div>
-                    <div className="flex flex-wrap gap-1 mb-3">
+                    <div className="flex flex-col gap-3 w-full">
                       {order.items.map((item, idx) => (
-                        <div key={idx} className="bg-slate-50 border border-slate-100 rounded p-1.5 flex flex-col gap-0.5">
-                          <span className="text-[8px] font-black text-slate-600">{item.drugName} (x{item.quantity})</span>
-                          {item.laboratory && <span className="text-[7px] text-slate-400 uppercase font-bold">· {item.laboratory}</span>}
-                          <span className="text-[7px] text-slate-400 font-bold uppercase flex items-center gap-0.5">
-                            <MapPin className="h-2 w-2" /> {item.location || '---'}
-                          </span>
+                        <div key={idx} className="bg-slate-50 border border-slate-200/60 rounded-xl p-3.5 flex flex-col gap-2 shadow-sm">
+                          <span className="text-[12px] font-black text-slate-800 whitespace-normal break-words leading-snug">{item.drugName} <span className="text-[11px] font-black text-blue-600 ml-1 shrink-0 bg-blue-50 px-2 py-0.5 rounded-lg border border-blue-100">x{item.quantity}</span></span>
+                          <div className="flex flex-col gap-1.5 mt-1 pt-2 border-t border-slate-200/50">
+                            {item.laboratory && <span className="text-[10px] text-slate-500 uppercase font-black tracking-widest whitespace-normal break-words leading-snug">LAB: <span className="text-slate-600">{item.laboratory}</span></span>}
+                            <span className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1.5 pt-1">
+                              <MapPin className="h-3 w-3 shrink-0 text-slate-300" /> {item.location || '---'}
+                            </span>
+                          </div>
                         </div>
                       ))}
                     </div>
-                   <p className="text-[8px] font-mono text-slate-300 uppercase">FOLIO: {order.orderId.slice(-8)} • {format(new Date(order.date), "dd/MM HH:mm")}</p>
+                   <div className="flex items-center gap-2 pt-2 border-t border-slate-50">
+                     <Clock className="h-3.5 w-3.5 text-slate-300" />
+                     <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">FOLIO: {order.orderId.slice(-8)} • {format(new Date(order.date), "dd/MM HH:mm")}</p>
+                   </div>
                  </div>
                ))}
             </div>

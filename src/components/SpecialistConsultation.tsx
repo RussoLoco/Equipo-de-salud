@@ -703,16 +703,16 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                           <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-2">Recetado por Médico Clínico</p>
                           <div className="space-y-2">
                             {existingOrderItemsState.map((item, idx) => (
-                              <div key={idx} className="flex items-center justify-between p-3 bg-slate-100 rounded-2xl border border-slate-200">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-8 h-8 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
-                                    <Package className="h-4 w-4" />
+                              <div key={idx} className="flex items-start p-3 bg-slate-100 rounded-2xl border border-slate-200">
+                                <div className="flex items-start gap-3 flex-1 min-w-0">
+                                  <div className="w-8 h-8 shrink-0 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
+                                    <Package className="h-4 w-4 shrink-0" />
                                   </div>
-                                  <div>
-                                    <p className="text-[10px] font-bold text-slate-500 line-clamp-1">{item.drugName}</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
+                                  <div className="flex-1 min-w-0 pr-2">
+                                    <p className="text-[10px] font-bold text-slate-500 whitespace-normal break-words leading-tight">{item.drugName}</p>
+                                    <div className="flex flex-col gap-1 mt-1">
                                       <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{item.quantity} Uni.</p>
-                                      {item.laboratory && <span className="text-[8px] font-bold text-slate-400/70 truncate max-w-[80px]">· {item.laboratory}</span>}
+                                      {item.laboratory && <span className="text-[8px] font-bold text-slate-400/80 whitespace-normal break-words leading-snug">LAB: {item.laboratory}</span>}
                                     </div>
                                   </div>
                                 </div>
@@ -722,20 +722,20 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                         </div>
                       )}
                       {cart.map(item => (
-                        <div key={item.drugId} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
-                              <Package className="h-4 w-4" />
+                        <div key={item.drugId} className="flex items-start justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
+                          <div className="flex items-start gap-3 flex-1 min-w-0">
+                            <div className="w-8 h-8 shrink-0 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
+                              <Package className="h-4 w-4 shrink-0" />
                             </div>
-                            <div>
-                              <p className="text-[10px] font-bold text-slate-700 line-clamp-1">{item.drugName}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex-1 min-w-0 pr-2">
+                              <p className="text-[10px] font-bold text-slate-700 whitespace-normal break-words leading-tight">{item.drugName}</p>
+                              <div className="flex flex-col gap-1 mt-1">
                                 <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{item.quantity} Uni.</p>
-                                {item.laboratory && <span className="text-[8px] font-bold text-slate-400/70 truncate max-w-[80px]">· {item.laboratory}</span>}
+                                {item.laboratory && <span className="text-[8px] font-bold text-slate-400/80 whitespace-normal break-words leading-snug">LAB: {item.laboratory}</span>}
                               </div>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-1 shrink-0 ml-2 mt-1">
                             <button 
                               onClick={() => {
                                 const qtyNum = parseInt(String(item.quantity).replace(/[^0-9]/g, '')) || 0;

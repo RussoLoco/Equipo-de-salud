@@ -596,23 +596,23 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
         )}>
           {filteredMedicines.map((med) => (
             <div key={med.drugId} className="p-4 sm:p-6 space-y-4">
-              <div className="flex justify-between items-start">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
-                    <Package className="h-5 w-5" />
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100 shrink-0">
+                    <Package className="h-5 w-5 shrink-0" />
                   </div>
-                  <div>
-                    <p className="text-xs font-black text-slate-800">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[11px] font-black text-slate-800 leading-tight whitespace-normal break-words">
                       {med.drug} 
-                      {med.brandName && <span className="text-blue-500 ml-1 text-[10px]">({med.brandName})</span>}
+                      {med.brandName && <span className="text-blue-500 ml-1 text-[9px] font-bold">({med.brandName})</span>}
                     </p>
-                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter line-clamp-1">
-                      #{med.drugId} • {med.dosage}
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest whitespace-normal break-words mt-1 leading-snug">
+                      #{med.drugId} {med.dosage ? `• ${med.dosage}` : ''}
                     </p>
                   </div>
                 </div>
                 <div className={cn(
-                  "px-3 py-1 rounded-lg text-[10px] font-black border",
+                  "px-2.5 py-1 rounded-lg text-[9px] font-black border shrink-0 text-center mt-0.5",
                   (med.stock === '0' || !med.stock) ? "bg-red-50 text-red-600 border-red-100" : "bg-blue-50 text-blue-600 border-blue-100"
                 )}>
                   Stock: {med.stock || '-'}

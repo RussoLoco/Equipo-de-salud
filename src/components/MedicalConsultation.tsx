@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatch, limit, orderBy } from 'firebase/firestore';
+import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, getDocs, writeBatch, limit, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { PatientVisit, MedicalEvolution, Medicine, OrderItem, Order } from '../types';
 import { useAuth } from './AuthProvider';
@@ -40,6 +40,17 @@ export default function MedicalConsultation() {
   const [isPediatricCollapsed, setIsPediatricCollapsed] = useState(false);
   const [isAdultCollapsed, setIsAdultCollapsed] = useState(false);
   const [isBiometryCollapsed, setIsBiometryCollapsed] = useState(true);
+
+  // Biometrics Edit State
+  const [isEditingBiometrics, setIsEditingBiometrics] = useState(false);
+  const [biometricsForm, setBiometricsForm] = useState({
+    weight: '',
+    height: '',
+    temperature: '',
+    bloodPressure: '',
+    heartRate: '',
+    o2Saturation: ''
+  });
 
   const getServiceLabel = (type?: string) => {
     switch (type) {
@@ -113,6 +124,49 @@ export default function MedicalConsultation() {
       setSelectedVisit({ ...visit, ...visitUpdate });
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `patients/${visit.patientId}/visits/${visit.id} (and root)`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const submitBiometricsEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedVisit || !profile) return;
+    try {
+      setIsSubmitting(true);
+      
+      const newVitals = {
+        ...(selectedVisit.vitals || { date: new Date().toISOString() }),
+        weight: biometricsForm.weight,
+        height: biometricsForm.height,
+        temperature: biometricsForm.temperature,
+        bloodPressure: biometricsForm.bloodPressure,
+        heartRate: biometricsForm.heartRate,
+        o2Saturation: biometricsForm.o2Saturation,
+      };
+
+      const batch = writeBatch(db);
+      
+      // Update global patient record
+      batch.set(doc(db, 'patients', selectedVisit.patientId), {
+        vitals: newVitals,
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
+
+      // Fetch all visits for this patient and update them
+      const visitsSnap = await getDocs(collection(db, `patients/${selectedVisit.patientId}/visits`));
+      visitsSnap.forEach(vDoc => {
+        batch.set(vDoc.ref, { vitals: newVitals, updatedAt: new Date().toISOString() }, { merge: true });
+        batch.set(doc(db, 'visits', vDoc.id), { vitals: newVitals, updatedAt: new Date().toISOString() }, { merge: true });
+      });
+
+      await batch.commit();
+
+      setSelectedVisit({ ...selectedVisit, vitals: newVitals as any });
+      setIsEditingBiometrics(false);
+    } catch (error) {
+      console.error(error);
+      alert("Error actualizando biometría, revisa permisos o conexión.");
     } finally {
       setIsSubmitting(false);
     }
@@ -576,72 +630,176 @@ export default function MedicalConsultation() {
                       </p>
                     </div>
                   </div>
-                  <div className="w-10 h-10 bg-slate-50 group-hover:bg-blue-50 rounded-xl flex items-center justify-center transition-colors">
-                    <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-transform", isBiometryCollapsed && "rotate-180")} />
+                  <div className="flex items-center gap-3">
+                    {(profile?.role === 'doctor' || profile?.role === 'admin') && selectedVisit.category?.toLowerCase() === 'adulto' && !isEditingBiometrics && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBiometricsForm({
+                            weight: selectedVisit.vitals?.weight || '',
+                            height: selectedVisit.vitals?.height || '',
+                            temperature: selectedVisit.vitals?.temperature || '',
+                            bloodPressure: selectedVisit.vitals?.bloodPressure || '',
+                            heartRate: selectedVisit.vitals?.heartRate || '',
+                            o2Saturation: selectedVisit.vitals?.o2Saturation || ''
+                          });
+                          setIsEditingBiometrics(true);
+                          setIsBiometryCollapsed(false);
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-100 transition-colors"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path></svg>
+                        Editar
+                      </button>
+                    )}
+                    <div className="w-10 h-10 bg-slate-50 group-hover:bg-blue-50 rounded-xl flex items-center justify-center transition-colors">
+                      <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-transform", isBiometryCollapsed && "rotate-180")} />
+                    </div>
                   </div>
                 </div>
 
                 {!isBiometryCollapsed && (
                   <div className="mt-6 flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-slate-100 pt-6">
-                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
-                          <Weight className="h-5 w-5" />
+                    {isEditingBiometrics ? (
+                      <form onSubmit={submitBiometricsEdit} className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Peso (kg)</label>
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                              value={biometricsForm.weight} 
+                              onChange={e => setBiometricsForm({...biometricsForm, weight: e.target.value})} 
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Altura (cm)</label>
+                            <input 
+                              type="number" 
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                              value={biometricsForm.height} 
+                              onChange={e => setBiometricsForm({...biometricsForm, height: e.target.value})} 
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Temperatura (°C)</label>
+                            <input 
+                              type="number" 
+                              step="0.1"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                              value={biometricsForm.temperature} 
+                              onChange={e => setBiometricsForm({...biometricsForm, temperature: e.target.value})} 
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Tensión Arterial</label>
+                            <input 
+                              type="text" 
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                              value={biometricsForm.bloodPressure} 
+                              onChange={e => setBiometricsForm({...biometricsForm, bloodPressure: e.target.value})} 
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">Frec. Cardíaca</label>
+                            <input 
+                              type="number" 
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                              value={biometricsForm.heartRate} 
+                              onChange={e => setBiometricsForm({...biometricsForm, heartRate: e.target.value})} 
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest pl-1">SpO2 (%)</label>
+                            <input 
+                              type="number" 
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200/60 rounded-xl text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-100 transition-all" 
+                              value={biometricsForm.o2Saturation} 
+                              onChange={e => setBiometricsForm({...biometricsForm, o2Saturation: e.target.value})} 
+                            />
+                          </div>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso Corporal</span>
-                      </div>
-                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.weight} <span className="text-[10px] text-slate-400">kg</span></span>
-                    </div>
+                        <div className="flex justify-end gap-3 pt-3">
+                          <button 
+                            type="button" 
+                            onClick={() => setIsEditingBiometrics(false)} 
+                            className="px-5 py-2.5 border border-slate-200 text-slate-500 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-50 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button 
+                            type="submit" 
+                            disabled={isSubmitting}
+                            className="px-5 py-2.5 bg-blue-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-700 transition-colors shadow-sm disabled:opacity-50"
+                          >
+                            {isSubmitting ? 'Guardando...' : 'Guardar Cambios'}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                              <Weight className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso Corporal</span>
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{selectedVisit.vitals?.weight || '-'} <span className="text-[10px] text-slate-400">kg</span></span>
+                        </div>
 
-                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
-                          <Ruler className="h-5 w-5" />
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                              <Ruler className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Talla / Estatura</span>
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{selectedVisit.vitals?.height || '-'} <span className="text-[10px] text-slate-400">cm</span></span>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Talla / Estatura</span>
-                      </div>
-                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.height} <span className="text-[10px] text-slate-400">cm</span></span>
-                    </div>
 
-                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600">
-                          <Thermometer className="h-5 w-5" />
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600">
+                              <Thermometer className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Temperatura</span>
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{selectedVisit.vitals?.temperature || '-'} <span className="text-[10px] text-slate-400">°C</span></span>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Temperatura</span>
-                      </div>
-                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.temperature} <span className="text-[10px] text-slate-400">°C</span></span>
-                    </div>
 
-                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600">
-                          <Activity className="h-5 w-5" />
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600">
+                              <Activity className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presión Arterial</span>
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{selectedVisit.vitals?.bloodPressure || '-'}</span>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presión Arterial</span>
-                      </div>
-                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.bloodPressure}</span>
-                    </div>
 
-                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
-                          <Activity className="h-5 w-5" />
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
+                              <Activity className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frec. Cardiaca</span>
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{selectedVisit.vitals?.heartRate || '-'} <span className="text-[10px] text-slate-400">bpm</span></span>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frec. Cardiaca</span>
-                      </div>
-                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.heartRate} <span className="text-[10px] text-slate-400">bpm</span></span>
-                    </div>
 
-                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
-                      <div className="flex items-center gap-4">
-                        <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center text-sky-600">
-                          <Activity className="h-5 w-5" />
+                        <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                          <div className="flex items-center gap-4">
+                            <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center text-sky-600">
+                              <Activity className="h-5 w-5" />
+                            </div>
+                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SpO2</span>
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{selectedVisit.vitals?.o2Saturation || '-'} <span className="text-[10px] text-slate-400">%</span></span>
                         </div>
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SpO2</span>
-                      </div>
-                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.o2Saturation} <span className="text-[10px] text-slate-400">%</span></span>
-                    </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -883,25 +1041,25 @@ export default function MedicalConsultation() {
                   <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.25em] mb-4">Medicación Recetada</h4>
                   <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
                     {cart.map(item => (
-                      <div key={item.drugId} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
-                            <Package className="h-4 w-4" />
+                      <div key={item.drugId} className="flex items-start justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
+                          <div className="w-8 h-8 shrink-0 bg-white rounded-xl shadow-sm flex items-center justify-center text-blue-600">
+                            <Package className="h-4 w-4 shrink-0" />
                           </div>
-                          <div>
-                            <p className="text-[10px] font-bold text-slate-700 line-clamp-1">{item.drugName}</p>
-                            <div className="flex items-center gap-2 mt-0.5">
+                          <div className="flex-1 min-w-0 pr-2">
+                            <p className="text-[10px] font-bold text-slate-700 whitespace-normal break-words leading-tight">{item.drugName}</p>
+                            <div className="flex flex-col gap-1 mt-1">
                               <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.quantity} Uni.</p>
-                              {item.laboratory && <span className="text-[8px] font-bold text-slate-400/70 truncate max-w-[80px]">· {item.laboratory}</span>}
+                              {item.laboratory && <span className="text-[8px] font-bold text-slate-400/80 whitespace-normal break-words leading-snug">LAB: {item.laboratory}</span>}
                               {item.location && (
-                                <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest bg-blue-50 px-1 rounded flex items-center gap-0.5">
-                                  <MapPin className="h-2 w-2" /> {item.location}
+                                <span className="text-[7px] font-black w-fit text-blue-400 uppercase tracking-widest bg-blue-50 px-1 rounded flex items-center gap-0.5 mt-0.5">
+                                  <MapPin className="h-2 w-2 shrink-0" /> {item.location}
                                 </span>
                               )}
                             </div>
                           </div>
                         </div>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1 shrink-0 ml-2 mt-1">
                           <button 
                             onClick={() => {
                               const qtyNum = parseInt(String(item.quantity).replace(/[^0-9]/g, '')) || 0;

@@ -40,11 +40,13 @@ export default function AdminHistory() {
   
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
+  const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
 
   const deletePatient = async (id: string) => {
-    if (!window.confirm('¿Está seguro de eliminar este paciente y todo su historial? Esta acción no se puede deshacer.')) return;
     
     setIsDeleting(true);
+    setDeletingPatientId(null);
     try {
       // 1. Get all visits for the patient from the subcollection
       const visitsSnap = await getDocs(collection(db, `patients/${id}/visits`));
@@ -62,7 +64,9 @@ export default function AdminHistory() {
       
       await batch.commit();
       alert('Paciente e historial de visitas eliminados correctamente.');
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
+      alert('Error eliminando paciente: ' + (err?.message || 'Revisa conexión y permisos.'));
       handleFirestoreError(err, OperationType.DELETE, `patients/${id}`);
     } finally {
       setIsDeleting(false);
@@ -70,12 +74,14 @@ export default function AdminHistory() {
   };
 
   const deleteAllPatients = async () => {
-    if (!window.confirm('¡ATENCIÓN! ¿Está seguro de eliminar TODOS los pacientes del sistema? Esta acción es irreversible.')) return;
-    if (!window.confirm('Por favor, confirme nuevamente. Perderá todos los datos clínicos de todos los pacientes registrados.')) return;
-
+    
     setIsDeleting(true);
+    setConfirmingDeleteAll(false);
     try {
-      // 1. Wipe global visits collection
+      // 1. Fetch all patients first so we can delete their subcollections
+      const allPatientsSnap = await getDocs(collection(db, 'patients'));
+      
+      // 2. Wipe global visits collection
       let visitsCount = 0;
       while (true) {
         const snap = await getDocs(query(collection(db, 'visits'), limit(500)));
@@ -86,7 +92,17 @@ export default function AdminHistory() {
         visitsCount += snap.size;
       }
 
-      // 2. Wipe patients collection
+      // 3. Wipe all patient subcollections
+      for (const p of allPatientsSnap.docs) {
+        const pVisitsSnap = await getDocs(collection(db, `patients/${p.id}/visits`));
+        if (!pVisitsSnap.empty) {
+          const batch = writeBatch(db);
+          pVisitsSnap.docs.forEach(v => batch.delete(v.ref));
+          await batch.commit();
+        }
+      }
+
+      // 4. Wipe patients collection
       let patientsCount = 0;
       while (true) {
         const snap = await getDocs(query(collection(db, 'patients'), limit(500)));
@@ -98,7 +114,9 @@ export default function AdminHistory() {
       }
       
       alert(`Limpieza total exitosa: ${patientsCount} pacientes y ${visitsCount} registros de historial eliminados.`);
-    } catch (err) {
+    } catch (err: any) {
+      console.error(err);
+      alert('Error limpiando pacientes: ' + (err?.message || 'Asegúrate de tener permisos de Admin.'));
       handleFirestoreError(err, OperationType.DELETE, 'patients_all_wipe');
     } finally {
       setIsDeleting(false);
@@ -264,14 +282,22 @@ export default function AdminHistory() {
         {activeTab === 'patients' && (
           <div className="space-y-6">
             <div className="flex justify-end pr-4">
-              <button 
-                onClick={deleteAllPatients}
-                disabled={isDeleting}
-                className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all border border-red-100 shadow-sm shadow-red-50 disabled:opacity-50"
-              >
-                {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                {isDeleting ? 'Borrando...' : 'Eliminar Todos los Pacientes'}
-              </button>
+              {confirmingDeleteAll ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase text-red-600 tracking-widest bg-red-50 px-4 py-3 rounded-2xl">¿IRREVERSIBLE! CONFIRMAR VACIADO?</span>
+                  <button onClick={deleteAllPatients} disabled={isDeleting} className="px-6 py-3 bg-red-600 text-white hover:bg-red-700 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all">SÍ, BORRAR TODO</button>
+                  <button onClick={() => setConfirmingDeleteAll(false)} className="px-4 py-3 text-slate-400 hover:bg-slate-100 rounded-[1.5rem] text-[10px] font-black uppercase transition-all">Cancelar</button>
+                </div>
+              ) : (
+                <button 
+                  onClick={() => setConfirmingDeleteAll(true)}
+                  disabled={isDeleting}
+                  className="flex items-center gap-2 px-6 py-3 bg-red-50 text-red-600 hover:bg-red-100 rounded-[1.5rem] text-[10px] font-black uppercase tracking-widest transition-all border border-red-100 shadow-sm shadow-red-50 disabled:opacity-50"
+                >
+                  {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  {isDeleting ? 'Borrando...' : 'Eliminar Todos los Pacientes'}
+                </button>
+              )}
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredPatients.map(patient => (
@@ -281,8 +307,17 @@ export default function AdminHistory() {
                     <User className="h-7 w-7" />
                   </div>
                   <div className="flex flex-col items-end">
+                    {deletingPatientId === patient.id ? (
+                      <div className="flex flex-col items-end gap-1 mb-2 bg-red-50 p-2 rounded-xl">
+                        <span className="text-[8px] font-black text-red-600 uppercase">¿Seguro?</span>
+                        <div className="flex gap-2">
+                          <button onClick={(e) => { e.stopPropagation(); deletePatient(patient.id); }} className="text-[10px] font-black text-white bg-red-600 px-2 py-1 rounded hover:bg-red-700">Sí</button>
+                          <button onClick={(e) => { e.stopPropagation(); setDeletingPatientId(null); }} className="text-[10px] font-black text-slate-500 bg-white px-2 py-1 rounded hover:bg-slate-200">No</button>
+                        </div>
+                      </div>
+                    ) : (
                       <button 
-                        onClick={(e) => { e.stopPropagation(); deletePatient(patient.id); }}
+                        onClick={(e) => { e.stopPropagation(); setDeletingPatientId(patient.id); }}
                         disabled={isDeleting}
                         className={cn(
                           "p-2 rounded-xl transition-all mb-2",
@@ -292,6 +327,7 @@ export default function AdminHistory() {
                       >
                         {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                       </button>
+                    )}
                     <span className="text-[10px] font-bold text-slate-300">ID: {patient.id.slice(0, 8)}</span>
                     <span className="text-[8px] font-black text-blue-500 bg-blue-50 px-2 py-0.5 rounded-full uppercase tracking-widest mt-1">
                       {patient.category || 'Paciente'}
