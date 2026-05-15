@@ -251,10 +251,43 @@ export default function AdminPanel() {
     );
   };
 
+  const performWipeVisits = async () => {
+    let totalDeleted = 0;
+    try {
+      console.log('--- WIPE VISITS START ---');
+      while (true) {
+        const snap = await getDocsFromServer(query(collection(db, 'visits'), limit(500)));
+        if (snap.empty) break;
+        
+        const batch = writeBatch(db);
+        snap.docs.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        
+        totalDeleted += snap.size;
+        if (totalDeleted > 20000) break;
+      }
+      return totalDeleted;
+    } catch (err) {
+      console.error('Error in performWipeVisits:', err);
+      throw err;
+    }
+  };
+
+  const performWipeAllSubcollectionsOfPatients = async () => {
+    // Note: To delete all patient visits in client sdk, we must first find all patients 
+    // or use collectionGroup('visits'). Wait, collectionGroup('visits') needs an index, 
+    // but we can query it and delete? No, the easiest way to delete subcollections in client SDK 
+    // without an index on collectionGroup is to delete the collections manually when deleting patients, or via collectionGroup if possible. 
+    // Actually, if we just delete 'visits' from root, the 'visits' under 'patients' are orphaned.
+    // Let's use collectionGroup('visits') if possible. But it requires index. 
+    // Alternatively, since we are doing total wipe, we can fetch all patients, and their visits, deleting them before the patient.
+    // Wait, the rules allow reading `visits` at the root and under patients.
+  };
+
   const handleTotalWipe = async () => {
     triggerConfirm(
-      '¿LIMPIEZA TOTAL DEL SISTEMA?',
-      'Se borrará TODO: Inventario, Historial de pedidos, Pacientes y Cargas. Esta es la acción más crítica e irreversible.',
+      '¿PURGAR TODA LA BASE DE DATOS (Excepto Usuarios)?',
+      'Se borrará TODO: Inventario, Historial de pedidos, Pacientes, Visitas, y Cargas. Esta es la acción más crítica e irreversible.',
       async () => {
         setError(null);
         setSuccess(false);
@@ -262,7 +295,23 @@ export default function AdminPanel() {
         try {
           const invCount = await performWipeInventory();
           const ordCount = await performWipeOrders();
-          const patCount = await performWipePatients();
+          const visCount = await performWipeVisits();
+          
+          // Delete patients and their visits subcollection
+          let patCount = 0;
+          while (true) {
+            const patSnap = await getDocsFromServer(query(collection(db, 'patients'), limit(100)));
+            if (patSnap.empty) break;
+            for (const docSnap of patSnap.docs) {
+              const visitsSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'visits'));
+              const vBatch = writeBatch(db);
+              visitsSnap.docs.forEach(v => vBatch.delete(v.ref));
+              await vBatch.commit();
+              await deleteDoc(docSnap.ref);
+              patCount++;
+            }
+          }
+          setTotalPacientes(0);
           
           const uploadsSnap = await getDocsFromServer(collection(db, 'uploads_history'));
           const uploadBatch = writeBatch(db);
@@ -271,10 +320,10 @@ export default function AdminPanel() {
 
           await refreshStats();
           setSuccess(true);
-          setSuccessMsg(`Limpieza total completa: ${invCount} registros de inventario, ${ordCount} de historial y ${patCount} pacientes eliminados.`);
+          setSuccessMsg(`Purga total exitosa: se conservaron solo los usuarios.`);
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 8000);
         } catch (err) {
-          setError('Error durante la limpieza total.');
+          setError('Error durante la purga total.');
           handleFirestoreError(err, OperationType.DELETE, 'system');
         } finally {
           setLoading(false);
@@ -707,7 +756,7 @@ export default function AdminPanel() {
                     className="flex-1 min-w-[180px] flex items-center justify-center gap-3 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-red-600 text-white border border-red-700 hover:bg-red-700 transition-all shadow-xl shadow-red-200 disabled:opacity-50"
                   >
                     <ShieldAlert className="h-4 w-4" />
-                    Reset Total DB
+                    Purgar Base de Datos
                   </button>
                 </div>
               </div>

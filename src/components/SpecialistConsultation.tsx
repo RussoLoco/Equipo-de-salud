@@ -47,6 +47,31 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
   // Scripting (RECETA) State
   const [showInventory, setShowInventory] = useState(false);
   const [cart, setCart] = useState<OrderItem[]>([]);
+  const [existingOrderItemsState, setExistingOrderItemsState] = useState<OrderItem[]>([]);
+
+  useEffect(() => {
+    if (selectedVisit && selectedVisit.interconsultationOrderId) {
+      getDoc(doc(db, 'orders', selectedVisit.interconsultationOrderId))
+        .then(snap => {
+          if (snap.exists()) {
+            setExistingOrderItemsState(snap.data().items || []);
+          } else {
+            setExistingOrderItemsState([]);
+          }
+        })
+        .catch(err => {
+          console.error("Error fetching interconsultation order", err);
+          setExistingOrderItemsState([]);
+        });
+    } else {
+      setExistingOrderItemsState([]);
+    }
+  }, [selectedVisit]);
+
+  // Waitlist UI State
+  const [isPediatricCollapsed, setIsPediatricCollapsed] = useState(false);
+  const [isAdultCollapsed, setIsAdultCollapsed] = useState(false);
+  const [isBiometryCollapsed, setIsBiometryCollapsed] = useState(true);
 
   const userRole = forcedRole || profile?.role || '';
   const myService = ROLE_TO_SERVICE[userRole];
@@ -208,6 +233,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
         notes: evolutionNotes,
         doctorName: profile.name,
         doctorId: profile.uid,
+        doctorPhoto: profile.photoURL,
         serviceType: myService || 'especialidad'
       };
 
@@ -217,25 +243,53 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
         updatedAt: new Date().toISOString()
       };
 
+      let activeOrderId = selectedVisit.interconsultationOrderId;
+      let existingOrderItems: OrderItem[] = [];
+      let previousDoctorName = '';
+
+      if (activeOrderId) {
+        const orderSnap = await getDoc(doc(db, 'orders', activeOrderId));
+        if (orderSnap.exists()) {
+          const orderData = orderSnap.data() as Order;
+          existingOrderItems = orderData.items || [];
+          previousDoctorName = orderData.doctorName;
+        } else {
+          activeOrderId = undefined;
+        }
+      }
+
       const batch = writeBatch(db);
 
-      // Create Order if cart has items
-      let orderId: string | null = null;
-      if (cart.length > 0) {
-        orderId = doc(collection(db, 'orders')).id;
-        const orderData: Order = {
-          orderId,
-          date: new Date().toISOString(),
-          doctorId: profile.uid,
-          doctorName: profile.name,
-          patientId: selectedVisit.patientId,
-          patientName: selectedVisit.patientName,
-          patientDni: selectedVisit.patientDni,
-          items: cart,
-          status: 'Pendiente',
-          location: 'Consultorio'
-        };
-        batch.set(doc(db, 'orders', orderId), orderData);
+      const combinedItems = [...existingOrderItems, ...cart];
+
+      if (combinedItems.length > 0) {
+        if (activeOrderId) {
+          // Update the existing order to add the new cart items and change status to Pendiente
+          batch.update(doc(db, 'orders', activeOrderId), {
+            items: combinedItems,
+            status: 'Pendiente',
+            doctorName: previousDoctorName && previousDoctorName !== profile.name 
+                          ? `${previousDoctorName} / ${profile.name}` 
+                          : profile.name,
+            updatedAt: new Date().toISOString()
+          });
+        } else {
+          // Create new order as usual
+          const newOrderId = doc(collection(db, 'orders')).id;
+          const orderData: Order = {
+            orderId: newOrderId,
+            date: new Date().toISOString(),
+            doctorId: profile.uid,
+            doctorName: profile.name,
+            patientId: selectedVisit.patientId,
+            patientName: selectedVisit.patientName,
+            patientDni: selectedVisit.patientDni,
+            items: combinedItems,
+            status: 'Pendiente',
+            location: 'Consultorio'
+          };
+          batch.set(doc(db, 'orders', newOrderId), orderData);
+        }
       }
 
       batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
@@ -371,64 +425,76 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       {!selectedVisit ? (
         <div className="space-y-12">
           <div className="flex flex-col gap-12">
-            {/* Child Queue */}
+            {/* Child Queue Section */}
             <div className="space-y-8">
-              <div className="flex items-center justify-between px-4">
+              <div 
+                className="flex items-center justify-between px-4 cursor-pointer group"
+                onClick={() => setIsPediatricCollapsed(!isPediatricCollapsed)}
+              >
                 <div className="flex items-center gap-5">
                   <div className="w-12 h-12 bg-emerald-50 text-emerald-500 rounded-2xl flex items-center justify-center shadow-sm">
                     <Activity className="h-6 w-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 group-hover:text-emerald-600 transition-colors">
                       {SERVICE_LABEL[myService || ''] || 'Especialidad'}: Pediátrico
+                      <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-emerald-500 transition-transform", isPediatricCollapsed && "rotate-180")} />
                     </h2>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Niños esperando atención especializada</p>
                   </div>
                 </div>
-                <div className="px-5 py-2.5 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 flex items-center gap-2">
+                <div className="px-5 py-2.5 bg-emerald-500 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 flex items-center gap-2 group-hover:bg-emerald-600 transition-colors">
                   <span className="w-2 h-2 bg-white rounded-full animate-pulse" />
                   {childVisits.length} Niños
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                {childVisits.map((visit, idx) => renderVisitCard(visit, idx))}
-                {childVisits.length === 0 && (
-                  <div className="col-span-full py-20 text-center bg-emerald-50/20 border-2 border-dashed border-emerald-100 rounded-[3rem]">
-                    <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest">No hay niños en espera</p>
-                  </div>
-                )}
-              </div>
+              {!isPediatricCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 animate-in slide-in-from-top-4 fade-in duration-300">
+                  {childVisits.map((visit, idx) => renderVisitCard(visit, idx))}
+                  {childVisits.length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-emerald-50/20 border-2 border-dashed border-emerald-100 rounded-[3rem]">
+                      <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest">No hay niños en espera</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Adult Queue */}
             <div className="space-y-8">
-              <div className="flex items-center justify-between px-4">
+              <div 
+                className="flex items-center justify-between px-4 cursor-pointer group"
+                onClick={() => setIsAdultCollapsed(!isAdultCollapsed)}
+              >
                 <div className="flex items-center gap-5">
                   <div className="w-12 h-12 bg-slate-100 text-slate-500 rounded-2xl flex items-center justify-center shadow-sm">
                     <User className="h-6 w-6" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                    <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2 group-hover:text-slate-700 transition-colors">
                        {SERVICE_LABEL[myService || ''] || 'Especialidad'}: Adultos
+                       <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-slate-600 transition-transform", isAdultCollapsed && "rotate-180")} />
                     </h2>
                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Adultos esperando atención especializada</p>
                   </div>
                 </div>
-                <div className="px-5 py-2.5 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 flex items-center gap-2">
+                <div className="px-5 py-2.5 bg-slate-900 text-white rounded-full text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 flex items-center gap-2 group-hover:bg-slate-800 transition-colors">
                   <span className="w-2 h-2 bg-slate-400 rounded-full" />
                   {adultVisits.length} Adultos
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
-                {adultVisits.map((visit, idx) => renderVisitCard(visit, idx))}
-                {adultVisits.length === 0 && (
-                  <div className="col-span-full py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
-                    <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">No hay adultos en espera</p>
-                  </div>
-                )}
-              </div>
+              {!isAdultCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 animate-in slide-in-from-top-4 fade-in duration-300">
+                  {adultVisits.map((visit, idx) => renderVisitCard(visit, idx))}
+                  {adultVisits.length === 0 && (
+                    <div className="col-span-full py-20 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
+                      <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">No hay adultos en espera</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -468,35 +534,92 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
               </div>
 
               {/* Vitals Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-1">Peso</span>
-                  <div className="flex items-center gap-2">
-                    <Weight className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm font-black text-slate-700">{selectedVisit.vitals.weight || '-'} kg</span>
+              <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 shadow-sm">
+                <div 
+                  className="flex items-center justify-between cursor-pointer group"
+                  onClick={() => setIsBiometryCollapsed(!isBiometryCollapsed)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
+                      <Activity className="h-6 w-6 text-blue-500" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest group-hover:text-blue-600 transition-colors">
+                        Datos Biométricos
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                        Signos vitales de la admisión
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 bg-slate-50 group-hover:bg-blue-50 rounded-xl flex items-center justify-center transition-colors">
+                    <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-transform", isBiometryCollapsed && "rotate-180")} />
                   </div>
                 </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-1">Talla</span>
-                  <div className="flex items-center gap-2">
-                    <Ruler className="h-4 w-4 text-blue-500" />
-                    <span className="text-sm font-black text-slate-700">{selectedVisit.vitals.height || '-'} cm</span>
+
+                {!isBiometryCollapsed && (
+                  <div className="mt-6 flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-slate-100 pt-6">
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                          <Weight className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso Corporal</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.weight || '-'} <span className="text-[10px] text-slate-400">kg</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                          <Ruler className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Talla / Estatura</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.height || '-'} <span className="text-[10px] text-slate-400">cm</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600">
+                          <Thermometer className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Temperatura</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.temperature || '-'} <span className="text-[10px] text-slate-400">°C</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presión Arterial</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.bloodPressure || '-'}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frec. Cardiaca</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.heartRate || '-'} <span className="text-[10px] text-slate-400">bpm</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center text-sky-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SpO2</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.o2Saturation || '-'} <span className="text-[10px] text-slate-400">%</span></span>
+                    </div>
                   </div>
-                </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-1">Temperatura</span>
-                  <div className="flex items-center gap-2">
-                    <Thermometer className="h-4 w-4 text-red-500" />
-                    <span className="text-sm font-black text-slate-700">{selectedVisit.vitals.temperature || '-'} °C</span>
-                  </div>
-                </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-1">Presión Alt.</span>
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-4 w-4 text-purple-500" />
-                    <span className="text-sm font-black text-slate-700">{selectedVisit.vitals.bloodPressure || '-'}</span>
-                  </div>
-                </div>
+                )}
               </div>
 
               {/* Permanent Context */}
@@ -575,6 +698,29 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                   <div>
                     <h4 className="text-[10px] font-black text-slate-300 uppercase tracking-[0.25em] mb-4">Medicación Recetada</h4>
                     <div className="space-y-3 max-h-[40vh] overflow-y-auto pr-2">
+                      {existingOrderItemsState.length > 0 && (
+                        <div className="mb-4">
+                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mb-2 px-2">Recetado por Médico Clínico</p>
+                          <div className="space-y-2">
+                            {existingOrderItemsState.map((item, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-3 bg-slate-100 rounded-2xl border border-slate-200">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 bg-white rounded-xl shadow-sm flex items-center justify-center text-slate-400">
+                                    <Package className="h-4 w-4" />
+                                  </div>
+                                  <div>
+                                    <p className="text-[10px] font-bold text-slate-500 line-clamp-1">{item.drugName}</p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{item.quantity} Uni.</p>
+                                      {item.laboratory && <span className="text-[8px] font-bold text-slate-400/70 truncate max-w-[80px]">· {item.laboratory}</span>}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                       {cart.map(item => (
                         <div key={item.drugId} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-100 group">
                           <div className="flex items-center gap-3">
@@ -583,8 +729,9 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                             </div>
                             <div>
                               <p className="text-[10px] font-bold text-slate-700 line-clamp-1">{item.drugName}</p>
-                              <div className="flex items-center gap-2">
-                                <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.quantity} Uni.</p>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">{item.quantity} Uni.</p>
+                                {item.laboratory && <span className="text-[8px] font-bold text-slate-400/70 truncate max-w-[80px]">· {item.laboratory}</span>}
                               </div>
                             </div>
                           </div>
@@ -652,9 +799,22 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                               {getServiceLabel(visit.serviceType)}
                             </span>
                           </div>
-                          <span className="text-[8px] font-bold text-slate-400 italic">
-                            {visit.evolution?.doctorName.split(' ')[0]}
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {visit.evolution?.doctorPhoto ? (
+                              <img 
+                                src={visit.evolution.doctorPhoto} 
+                                alt={visit.evolution.doctorName || ''}
+                                className="w-4 h-4 rounded-full object-cover border border-slate-200"
+                              />
+                            ) : (
+                              <div className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                                <User className="h-2 w-2 text-slate-400" />
+                              </div>
+                            )}
+                            <span className="text-[8px] font-bold text-slate-400 italic">
+                              {visit.evolution?.doctorName ? visit.evolution.doctorName.split(' ')[0] : 'Colega'}
+                            </span>
+                          </div>
                         </div>
                         <p className="text-[10px] text-slate-600 font-bold line-clamp-3 leading-relaxed">
                           {visit.evolution?.notes}
@@ -730,7 +890,20 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
                             {getServiceLabel(visit.serviceType)}
                           </span>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-400">Evaluado por: {visit.evolution?.doctorName}</span>
+                        <div className="flex items-center gap-2">
+                          {visit.evolution?.doctorPhoto ? (
+                            <img 
+                              src={visit.evolution.doctorPhoto} 
+                              alt={visit.evolution.doctorName}
+                              className="w-6 h-6 rounded-full object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                              <User className="h-3 w-3 text-slate-400" />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-bold text-slate-400">Evaluado por: {visit.evolution?.doctorName}</span>
+                        </div>
                      </div>
                      <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap">{visit.evolution?.notes}</p>
                   </div>

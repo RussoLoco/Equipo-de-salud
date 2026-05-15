@@ -185,7 +185,8 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
         drugId: med.drugId,
         drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug,
         quantity: '1',
-        location: med.location || '---'
+        location: med.location || '---',
+        laboratory: med.laboratory
       }];
     });
   };
@@ -542,6 +543,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                                   drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug, 
                                   quantity: "1", 
                                   location: med.location || '---',
+                                  laboratory: med.laboratory,
                                   stockAtTime: med.stock 
                                 }]);
                               }

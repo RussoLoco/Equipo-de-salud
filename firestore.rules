@@ -83,14 +83,16 @@ service cloud.firestore {
     }
 
     match /orders/{orderId} {
-      allow get: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
-      allow list: if isDoctor() || isPharmacy() || isAdmin() || isSuper();
-      allow create: if !isRestrictedSpecialist() && isDoctor() && isValidOrder(incoming()) && incoming().status == 'Pendiente';
-      allow update: if !isRestrictedSpecialist() && (
-          (isPharmacy() && incoming().status == 'Entregado' && existing().status == 'Pendiente')
-          || (isDoctor() && existing().status == 'Pendiente' && isValidOrder(incoming()))
+      allow get: if isDoctor() || isSpecialist() || isPharmacy() || isAdmin() || isSuper();
+      allow list: if isDoctor() || isSpecialist() || isPharmacy() || isAdmin() || isSuper();
+      allow create: if isSuper() || isAdmin() || (
+        (isDoctor() || isSpecialist()) && isValidOrder(incoming()) && (incoming().status == 'Pendiente' || incoming().status == 'En_Interconsulta')
+      );
+      allow update: if isSuper() || isAdmin() || (
+          (isPharmacy() && incoming().status == 'Entregado' && (existing().status == 'Pendiente' || existing().status == 'En_Interconsulta'))
+          || ((isDoctor() || isSpecialist()) && (existing().status == 'Pendiente' || existing().status == 'En_Interconsulta') && isValidOrder(incoming()))
         );
-      allow delete: if isAdmin();
+      allow delete: if isAdmin() || isSuper();
     }
     
     match /uploads_history/{uploadId} {
@@ -112,16 +114,16 @@ service cloud.firestore {
       
       match /visits/{visitId} {
         allow read: if isSignedIn() && isStaff();
-        allow create: if isSuper() || isStaff() && isValidVisit(incoming());
-        allow update: if isSuper() || isStaff() && isValidVisit(incoming());
+        allow create: if isSuper() || (isStaff() && isValidVisit(incoming()));
+        allow update: if isSuper() || (isStaff() && isValidVisit(incoming()));
         allow delete: if isAdmin();
       }
     }
 
     match /visits/{visitId} {
       allow read: if isSignedIn() && isStaff();
-      allow create: if isSuper() || isStaff() && isValidVisit(incoming());
-      allow update: if isSuper() || isStaff() && isValidVisit(incoming());
+      allow create: if isSuper() || (isStaff() && isValidVisit(incoming()));
+      allow update: if isSuper() || (isStaff() && isValidVisit(incoming()));
       allow delete: if isAdmin();
     }
   }

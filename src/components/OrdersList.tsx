@@ -199,10 +199,13 @@ export default function OrdersList() {
                           <Pill className="h-3.5 w-3.5 text-slate-300 group-hover:text-blue-400 transition-colors" />
                           <div>
                             <span className="text-xs font-bold text-slate-700 block">{item.drugName}</span>
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none mt-1 group-hover:text-blue-400/70 transition-colors flex items-center gap-1">
-                              <MapPin className="h-2.5 w-2.5" />
-                              Ubic: {item.location || '---'}
-                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              {item.laboratory && <span className="text-[8px] font-bold text-slate-400/80 uppercase tracking-widest truncate max-w-[120px]">· {item.laboratory}</span>}
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest leading-none group-hover:text-blue-400/70 transition-colors flex items-center gap-1">
+                                <MapPin className="h-2.5 w-2.5" />
+                                Ubic: {item.location || '---'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                         <span className="text-[10px] font-black bg-white px-2.5 py-1 border border-slate-100 rounded-xl shadow-sm text-slate-600">
@@ -282,6 +285,7 @@ export default function OrdersList() {
                           {order.items.map((item, idx) => (
                             <span key={idx} className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex flex-col">
                               <span>{item.drugName} (x{item.quantity})</span>
+                              {item.laboratory && <span className="text-[7px] text-slate-400 uppercase font-bold tracking-normal">· {item.laboratory}</span>}
                               <span className="text-[7px] text-slate-400 uppercase font-black tracking-normal flex items-center gap-0.5">
                                 <MapPin className="h-2 w-2" /> {item.location || '---'}
                               </span>
@@ -322,6 +326,7 @@ export default function OrdersList() {
                       {order.items.map((item, idx) => (
                         <div key={idx} className="bg-slate-50 border border-slate-100 rounded p-1.5 flex flex-col gap-0.5">
                           <span className="text-[8px] font-black text-slate-600">{item.drugName} (x{item.quantity})</span>
+                          {item.laboratory && <span className="text-[7px] text-slate-400 uppercase font-bold">· {item.laboratory}</span>}
                           <span className="text-[7px] text-slate-400 font-bold uppercase flex items-center gap-0.5">
                             <MapPin className="h-2 w-2" /> {item.location || '---'}
                           </span>

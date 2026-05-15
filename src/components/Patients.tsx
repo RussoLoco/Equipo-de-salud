@@ -41,6 +41,8 @@ export default function Patients() {
     height: '',
     temperature: '',
     bloodPressure: '',
+    heartRate: '',
+    o2Saturation: '',
     recordedBy: profile?.uid || ''
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -184,6 +186,8 @@ export default function Patients() {
           height: '',
           temperature: '',
           bloodPressure: '',
+          heartRate: '',
+          o2Saturation: '',
           recordedBy: profile?.uid || ''
         }
       };
@@ -262,6 +266,8 @@ export default function Patients() {
           height: '',
           temperature: '',
           bloodPressure: '',
+          heartRate: '',
+          o2Saturation: '',
           recordedBy: profile.uid
         }
       };
@@ -887,11 +893,22 @@ export default function Patients() {
                                     </p>
                                   </div>
                                   <div className="flex items-center justify-between pt-2">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center">
-                                        <User className="h-3 w-3 text-slate-400" />
+                                    <div className="flex items-center gap-3">
+                                      {visit.evolution.doctorPhoto ? (
+                                        <img 
+                                          src={visit.evolution.doctorPhoto} 
+                                          alt={visit.evolution.doctorName}
+                                          className="w-8 h-8 rounded-full object-cover border border-slate-200 shadow-sm"
+                                        />
+                                      ) : (
+                                        <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200 shadow-sm">
+                                          <User className="h-4 w-4 text-slate-400" />
+                                        </div>
+                                      )}
+                                      <div className="flex flex-col">
+                                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none mb-1 text-left">Atendido por</span>
+                                        <span className="text-xs font-bold text-slate-700 leading-none">{visit.evolution.doctorName}</span>
                                       </div>
-                                      <span className="text-[10px] font-bold text-slate-400">Dr. {visit.evolution.doctorName}</span>
                                     </div>
                                   </div>
                                 </div>
@@ -1148,7 +1165,7 @@ export default function Patients() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6 mb-10">
+              <div className="grid grid-cols-3 gap-4 mb-8">
                 <div className="space-y-4">
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1 flex items-center gap-2">
@@ -1201,6 +1218,34 @@ export default function Patients() {
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100"
                       value={vitals.bloodPressure}
                       onChange={e => setVitals({...vitals, bloodPressure: e.target.value})}
+                      required
+                    />
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1 flex items-center gap-2">
+                      <Activity className="h-3 w-3" /> Frec. Cardiaca
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej: 80"
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100"
+                      value={vitals.heartRate}
+                      onChange={e => setVitals({...vitals, heartRate: e.target.value})}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1 flex items-center gap-2">
+                      <Activity className="h-3 w-3" /> SpO2 (%)
+                    </label>
+                    <input 
+                      type="text" 
+                      placeholder="Ej: 98"
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100"
+                      value={vitals.o2Saturation}
+                      onChange={e => setVitals({...vitals, o2Saturation: e.target.value})}
                       required
                     />
                   </div>

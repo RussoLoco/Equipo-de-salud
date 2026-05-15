@@ -36,6 +36,11 @@ export default function MedicalConsultation() {
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [showReferralModal, setShowReferralModal] = useState(false);
 
+  // Waitlist UI State
+  const [isPediatricCollapsed, setIsPediatricCollapsed] = useState(false);
+  const [isAdultCollapsed, setIsAdultCollapsed] = useState(false);
+  const [isBiometryCollapsed, setIsBiometryCollapsed] = useState(true);
+
   const getServiceLabel = (type?: string) => {
     switch (type) {
       case 'nutrición': return 'Nutrición';
@@ -230,6 +235,7 @@ export default function MedicalConsultation() {
         notes: evolutionNotes || 'Derivación sin notas adicionales.',
         doctorName: profile.name,
         doctorId: profile.uid,
+        doctorPhoto: profile.photoURL,
         serviceType: selectedVisit.serviceType || 'clínico'
       };
 
@@ -245,6 +251,7 @@ export default function MedicalConsultation() {
       let orderId: string | null = null;
       if (cart.length > 0) {
         orderId = doc(collection(db, 'orders')).id;
+        const isInterconsultation = !!referralService && (referralService === 'odontología' || referralService === 'psiquiatría');
         const orderData: Order = {
           orderId,
           date: new Date().toISOString(),
@@ -254,7 +261,7 @@ export default function MedicalConsultation() {
           patientName: selectedVisit.patientName,
           patientDni: selectedVisit.patientDni,
           items: cart,
-          status: 'Pendiente',
+          status: isInterconsultation ? 'En_Interconsulta' : 'Pendiente',
           location: 'Consultorio'
         };
         batch.set(doc(db, 'orders', orderId), orderData);
@@ -282,6 +289,7 @@ export default function MedicalConsultation() {
           status: 'espera',
           serviceType: referralService,
           vitals: selectedVisit.vitals, // Copy vitals to the new visit
+          ...(orderId && (referralService === 'odontología' || referralService === 'psiquiatría') ? { interconsultationOrderId: orderId } : {}),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -452,52 +460,64 @@ export default function MedicalConsultation() {
           <div className="flex flex-col gap-10">
             {/* Child Queue Section */}
             <div className="space-y-6">
-              <div className="flex items-center justify-between px-4">
+              <div 
+                className="flex items-center justify-between px-4 cursor-pointer group"
+                onClick={() => setIsPediatricCollapsed(!isPediatricCollapsed)}
+              >
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3 group-hover:text-blue-600 transition-colors">
                     <div className="p-2 bg-blue-100 rounded-xl"><Activity className="h-5 w-5 text-blue-600" /></div>
                     Sala de Espera: Pediátrica
+                    <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-transform", isPediatricCollapsed && "rotate-180")} />
                   </h2>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Pacientes niños que completaron biometría</p>
                 </div>
-                <div className="px-4 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-100">
+                <div className="px-4 py-3 bg-blue-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-blue-100 group-hover:bg-blue-700 transition-colors">
                   {childVisits.length} Niños
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {childVisits.map((visit, idx) => renderVisitCard(visit, idx))}
-                {childVisits.length === 0 && (
-                  <div className="col-span-full py-16 text-center bg-blue-50/30 border-2 border-dashed border-blue-100 rounded-[3rem]">
-                    <p className="text-xs font-bold text-blue-300 uppercase tracking-widest">No hay niños en espera</p>
-                  </div>
-                )}
-              </div>
+              {!isPediatricCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in slide-in-from-top-4 fade-in duration-300">
+                  {childVisits.map((visit, idx) => renderVisitCard(visit, idx))}
+                  {childVisits.length === 0 && (
+                    <div className="col-span-full py-16 text-center bg-blue-50/30 border-2 border-dashed border-blue-100 rounded-[3rem]">
+                      <p className="text-xs font-bold text-blue-300 uppercase tracking-widest">No hay niños en espera</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Adult Queue Section */}
             <div className="space-y-6">
-              <div className="flex items-center justify-between px-4">
+              <div 
+                className="flex items-center justify-between px-4 cursor-pointer group"
+                onClick={() => setIsAdultCollapsed(!isAdultCollapsed)}
+              >
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3 group-hover:text-slate-700 transition-colors">
                      <div className="p-2 bg-slate-100 rounded-xl"><User className="h-5 w-5 text-slate-600" /></div>
                      Sala de Espera: Adultos
+                     <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-slate-600 transition-transform", isAdultCollapsed && "rotate-180")} />
                   </h2>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Pacientes adultos recibidos de admisión</p>
                 </div>
-                <div className="px-4 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200">
+                <div className="px-4 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 group-hover:bg-slate-800 transition-colors">
                   {adultVisits.length} Adultos
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {adultVisits.map((visit, idx) => renderVisitCard(visit, idx))}
-                {adultVisits.length === 0 && (
-                  <div className="col-span-full py-16 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
-                    <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">No hay adultos en espera</p>
-                  </div>
-                )}
-              </div>
+              {!isAdultCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in slide-in-from-top-4 fade-in duration-300">
+                  {adultVisits.map((visit, idx) => renderVisitCard(visit, idx))}
+                  {adultVisits.length === 0 && (
+                    <div className="col-span-full py-16 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
+                      <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">No hay adultos en espera</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -538,43 +558,92 @@ export default function MedicalConsultation() {
               </div>
 
               {/* Biometry Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Peso Corporal</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                      <Weight className="h-4 w-4" />
+              <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 shadow-sm">
+                <div 
+                  className="flex items-center justify-between cursor-pointer group"
+                  onClick={() => setIsBiometryCollapsed(!isBiometryCollapsed)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center">
+                      <Activity className="h-6 w-6 text-blue-500" />
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.weight} <span className="text-[10px] text-slate-400">kg</span></span>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest group-hover:text-blue-600 transition-colors">
+                        Datos Biométricos
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                        Signos vitales de la admisión
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 bg-slate-50 group-hover:bg-blue-50 rounded-xl flex items-center justify-center transition-colors">
+                    <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-blue-500 transition-transform", isBiometryCollapsed && "rotate-180")} />
                   </div>
                 </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Talla / Estatura</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                      <Ruler className="h-4 w-4" />
+
+                {!isBiometryCollapsed && (
+                  <div className="mt-6 flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-slate-100 pt-6">
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                          <Weight className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso Corporal</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.weight} <span className="text-[10px] text-slate-400">kg</span></span>
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.height} <span className="text-[10px] text-slate-400">cm</span></span>
-                  </div>
-                </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Temperatura</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-red-50 rounded-xl flex items-center justify-center text-red-600">
-                      <Thermometer className="h-4 w-4" />
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                          <Ruler className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Talla / Estatura</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.height} <span className="text-[10px] text-slate-400">cm</span></span>
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.temperature} <span className="text-[10px] text-slate-400">°C</span></span>
-                  </div>
-                </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Presión Arterial</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
-                      <Activity className="h-4 w-4" />
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-600">
+                          <Thermometer className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Temperatura</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.temperature} <span className="text-[10px] text-slate-400">°C</span></span>
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.bloodPressure}</span>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presión Arterial</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.bloodPressure}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frec. Cardiaca</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.heartRate} <span className="text-[10px] text-slate-400">bpm</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center text-sky-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SpO2</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.o2Saturation} <span className="text-[10px] text-slate-400">%</span></span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Permanent Clinical History (Antecedentes) */}
@@ -664,9 +733,22 @@ export default function MedicalConsultation() {
                                   {getServiceLabel(visit.serviceType)}
                                 </span>
                               </div>
-                              <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
-                                Dr/a. {visit.evolution?.doctorName || 'Sin dato'}
-                              </p>
+                              <div className="flex items-center gap-1.5 mt-1">
+                                {visit.evolution?.doctorPhoto ? (
+                                  <img 
+                                    src={visit.evolution.doctorPhoto} 
+                                    alt={visit.evolution.doctorName || ''}
+                                    className="w-4 h-4 rounded-full object-cover border border-slate-200"
+                                  />
+                                ) : (
+                                  <div className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                                    <User className="h-2 w-2 text-slate-400" />
+                                  </div>
+                                )}
+                                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest text-left">
+                                  {visit.evolution?.doctorName ? `Dr/a. ${visit.evolution.doctorName.split(' ')[0]}` : 'Sin dato'}
+                                </p>
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-4">
@@ -808,8 +890,9 @@ export default function MedicalConsultation() {
                           </div>
                           <div>
                             <p className="text-[10px] font-bold text-slate-700 line-clamp-1">{item.drugName}</p>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 mt-0.5">
                               <p className="text-[8px] font-black text-slate-300 uppercase tracking-widest">{item.quantity} Uni.</p>
+                              {item.laboratory && <span className="text-[8px] font-bold text-slate-400/70 truncate max-w-[80px]">· {item.laboratory}</span>}
                               {item.location && (
                                 <span className="text-[7px] font-black text-blue-400 uppercase tracking-widest bg-blue-50 px-1 rounded flex items-center gap-0.5">
                                   <MapPin className="h-2 w-2" /> {item.location}
@@ -1023,9 +1106,22 @@ export default function MedicalConsultation() {
                                 {getServiceLabel(visit.serviceType)}
                               </span>
                             </div>
-                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                              Dr/a. {visit.evolution?.doctorName}
-                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              {visit.evolution?.doctorPhoto ? (
+                                <img 
+                                  src={visit.evolution.doctorPhoto} 
+                                  alt={visit.evolution.doctorName}
+                                  className="w-5 h-5 rounded-full object-cover border border-slate-200"
+                                />
+                              ) : (
+                                <div className="w-5 h-5 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                                  <User className="h-3 w-3 text-slate-400" />
+                                </div>
+                              )}
+                              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest text-left">
+                                Atendido por {visit.evolution?.doctorName}
+                              </p>
+                            </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-4">

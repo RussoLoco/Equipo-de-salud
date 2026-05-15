@@ -47,6 +47,8 @@ export interface Vitals {
   height: string;
   temperature: string;
   bloodPressure: string;
+  heartRate: string;
+  o2Saturation: string;
   recordedBy: string; // Admisión UID
 }
 
@@ -56,6 +58,7 @@ export interface MedicalEvolution {
   notes: string;
   doctorName: string;
   doctorId: string;
+  doctorPhoto?: string;
 }
 
 export interface PatientVisit {
@@ -72,6 +75,7 @@ export interface PatientVisit {
   vitals: Vitals;
   evolution?: MedicalEvolution;
   orderIds?: string[]; // IDs de pedidos vinculados
+  interconsultationOrderId?: string; // Pedido iniciado que espera resolución de especialista
   attendingDoctorId?: string;
   attendingDoctorName?: string;
   updatedAt?: string;
@@ -90,6 +94,7 @@ export interface OrderItem {
   drugName: string;
   quantity: string;
   location?: string;
+  laboratory?: string;
 }
 
 export interface Order {
@@ -101,7 +106,8 @@ export interface Order {
   patientName?: string; // Nuevo: Nombre del paciente
   patientDni?: string;  // Nuevo: DNI del paciente
   items: OrderItem[];
-  status: 'Pendiente' | 'Entregado';
+  status: 'Pendiente' | 'Entregado' | 'En_Interconsulta';
   location: string;
   deliveredAt?: string; // Nuevo: Fecha de entrega
+  updatedAt?: string;
 }

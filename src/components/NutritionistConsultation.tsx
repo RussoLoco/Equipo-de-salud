@@ -29,6 +29,11 @@ export default function NutritionistConsultation() {
   const [patientHistory, setPatientHistory] = useState<PatientVisit[]>([]);
   const [showFullHistory, setShowFullHistory] = useState(false);
 
+  // Waitlist UI State
+  const [isPediatricCollapsed, setIsPediatricCollapsed] = useState(false);
+  const [isAdultCollapsed, setIsAdultCollapsed] = useState(false);
+  const [isBiometryCollapsed, setIsBiometryCollapsed] = useState(true);
+
   const getServiceLabel = (type?: string) => {
     switch (type) {
       case 'nutrición': return 'Nutrición';
@@ -209,6 +214,7 @@ export default function NutritionistConsultation() {
         notes: nutritionNotes,
         doctorName: profile.name,
         doctorId: profile.uid,
+        doctorPhoto: profile.photoURL,
         serviceType: 'nutrición'
       };
 
@@ -341,52 +347,64 @@ export default function NutritionistConsultation() {
           <div className="flex flex-col gap-10">
             {/* Child Queue */}
             <div className="space-y-6">
-              <div className="flex items-center justify-between px-4">
+              <div 
+                className="flex items-center justify-between px-4 cursor-pointer group"
+                onClick={() => setIsPediatricCollapsed(!isPediatricCollapsed)}
+              >
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3 group-hover:text-emerald-600 transition-colors">
                     <div className="p-2 bg-emerald-100 rounded-xl"><Activity className="h-5 w-5 text-emerald-600" /></div>
                     Control Nutricional: Pediátrico
+                    <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-emerald-500 transition-transform", isPediatricCollapsed && "rotate-180")} />
                   </h2>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Niños esperando evaluación nutricional</p>
                 </div>
-                <div className="px-4 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100">
+                <div className="px-4 py-3 bg-emerald-600 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-emerald-100 group-hover:bg-emerald-700 transition-colors">
                   {childVisits.length} Niños
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {childVisits.map((visit, idx) => renderVisitCard(visit, idx))}
-                {childVisits.length === 0 && (
-                  <div className="col-span-full py-16 text-center bg-emerald-50/30 border-2 border-dashed border-emerald-100 rounded-[3rem]">
-                    <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest">No hay niños en espera</p>
-                  </div>
-                )}
-              </div>
+              {!isPediatricCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in slide-in-from-top-4 fade-in duration-300">
+                  {childVisits.map((visit, idx) => renderVisitCard(visit, idx))}
+                  {childVisits.length === 0 && (
+                    <div className="col-span-full py-16 text-center bg-emerald-50/30 border-2 border-dashed border-emerald-100 rounded-[3rem]">
+                      <p className="text-xs font-bold text-emerald-300 uppercase tracking-widest">No hay niños en espera</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Adult Queue */}
             <div className="space-y-6">
-              <div className="flex items-center justify-between px-4">
+              <div 
+                className="flex items-center justify-between px-4 cursor-pointer group"
+                onClick={() => setIsAdultCollapsed(!isAdultCollapsed)}
+              >
                 <div>
-                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3">
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3 group-hover:text-slate-700 transition-colors">
                      <div className="p-2 bg-slate-100 rounded-xl"><User className="h-5 w-5 text-slate-600" /></div>
                      Control Nutricional: Adultos
+                     <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-slate-600 transition-transform", isAdultCollapsed && "rotate-180")} />
                   </h2>
                   <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Adultos esperando evaluación nutricional</p>
                 </div>
-                <div className="px-4 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200">
+                <div className="px-4 py-3 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-slate-200 group-hover:bg-slate-800 transition-colors">
                   {adultVisits.length} Adultos
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                {adultVisits.map((visit, idx) => renderVisitCard(visit, idx))}
-                {adultVisits.length === 0 && (
-                  <div className="col-span-full py-16 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
-                    <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">No hay adultos en espera</p>
-                  </div>
-                )}
-              </div>
+              {!isAdultCollapsed && (
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in slide-in-from-top-4 fade-in duration-300">
+                  {adultVisits.map((visit, idx) => renderVisitCard(visit, idx))}
+                  {adultVisits.length === 0 && (
+                    <div className="col-span-full py-16 text-center bg-slate-50 border-2 border-dashed border-slate-200 rounded-[3rem]">
+                      <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">No hay adultos en espera</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -426,47 +444,96 @@ export default function NutritionistConsultation() {
               </div>
 
               {/* Vitals Summary */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Peso</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                      <Weight className="h-4 w-4" />
+              <div className="bg-white border border-slate-200 rounded-[2.5rem] p-6 shadow-sm">
+                <div 
+                  className="flex items-center justify-between cursor-pointer group"
+                  onClick={() => setIsBiometryCollapsed(!isBiometryCollapsed)}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center">
+                      <Activity className="h-6 w-6 text-emerald-500" />
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.weight} <span className="text-[10px] text-slate-400">kg</span></span>
+                    <div>
+                      <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest group-hover:text-emerald-600 transition-colors">
+                        Datos Biométricos
+                      </h3>
+                      <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">
+                        Signos vitales de la admisión
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-10 h-10 bg-slate-50 group-hover:bg-emerald-50 rounded-xl flex items-center justify-center transition-colors">
+                    <ChevronDown className={cn("h-5 w-5 text-slate-400 group-hover:text-emerald-500 transition-transform", isBiometryCollapsed && "rotate-180")} />
                   </div>
                 </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Talla</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600">
-                      <Ruler className="h-4 w-4" />
+
+                {!isBiometryCollapsed && (
+                  <div className="mt-6 flex flex-col gap-3 animate-in slide-in-from-top-4 fade-in duration-300 border-t border-slate-100 pt-6">
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
+                          <Weight className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso Corporal</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.weight} <span className="text-[10px] text-slate-400">kg</span></span>
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.height} <span className="text-[10px] text-slate-400">cm</span></span>
-                  </div>
-                </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                   <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">IMC (Estimado)</span>
-                   <div className="flex items-center gap-3">
-                     <div className="w-8 h-8 bg-blue-50 rounded-xl flex items-center justify-center text-blue-600">
-                       <Activity className="h-4 w-4" />
-                     </div>
-                     <span className="text-lg font-black text-slate-800">
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center text-emerald-600">
+                          <Ruler className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Talla / Estatura</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.height} <span className="text-[10px] text-slate-400">cm</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">IMC (Estimado)</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">
                         {selectedVisit.vitals.weight && selectedVisit.vitals.height 
                           ? (parseFloat(selectedVisit.vitals.weight) / Math.pow(parseFloat(selectedVisit.vitals.height)/100, 2)).toFixed(1)
                           : '-'}
-                     </span>
-                   </div>
-                </div>
-                <div className="bg-white border border-slate-200 p-6 rounded-3xl">
-                  <span className="text-[8px] font-black text-slate-300 uppercase tracking-widest block mb-2">Presión Art.</span>
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-purple-50 rounded-xl flex items-center justify-center text-purple-600">
-                      <Activity className="h-4 w-4" />
+                      </span>
                     </div>
-                    <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.bloodPressure}</span>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center text-purple-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Presión Arterial</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.bloodPressure}</span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Frec. Cardiaca</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.heartRate} <span className="text-[10px] text-slate-400">bpm</span></span>
+                    </div>
+
+                    <div className="flex items-center justify-between bg-slate-50 p-4 rounded-2xl hover:bg-slate-100 transition-colors">
+                      <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 bg-sky-100 rounded-xl flex items-center justify-center text-sky-600">
+                          <Activity className="h-5 w-5" />
+                        </div>
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">SpO2</span>
+                      </div>
+                      <span className="text-lg font-black text-slate-800">{selectedVisit.vitals.o2Saturation} <span className="text-[10px] text-slate-400">%</span></span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Permanent Context */}
@@ -562,9 +629,22 @@ export default function NutritionistConsultation() {
                               {getServiceLabel(visit.serviceType)}
                             </span>
                           </div>
-                          <span className="text-[8px] font-bold text-slate-400 italic">
-                            Dr. {visit.evolution?.doctorName.split(' ')[0]}
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-1">
+                            {visit.evolution?.doctorPhoto ? (
+                              <img 
+                                src={visit.evolution.doctorPhoto} 
+                                alt={visit.evolution.doctorName || ''}
+                                className="w-4 h-4 rounded-full object-cover border border-slate-200"
+                              />
+                            ) : (
+                              <div className="w-4 h-4 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                                <User className="h-2 w-2 text-slate-400" />
+                              </div>
+                            )}
+                            <span className="text-[8px] font-bold text-slate-400 italic">
+                              {visit.evolution?.doctorName ? `Dr. ${visit.evolution.doctorName.split(' ')[0]}` : 'Colega'}
+                            </span>
+                          </div>
                         </div>
                         <p className="text-[10px] text-slate-600 font-bold line-clamp-3 leading-relaxed">
                           {visit.evolution?.notes}
@@ -609,7 +689,20 @@ export default function NutritionistConsultation() {
                             {getServiceLabel(visit.serviceType)}
                           </span>
                         </div>
-                        <span className="text-[10px] font-bold text-slate-400">Evaluado por: {visit.evolution?.doctorName}</span>
+                        <div className="flex items-center gap-2">
+                          {visit.evolution?.doctorPhoto ? (
+                            <img 
+                              src={visit.evolution.doctorPhoto} 
+                              alt={visit.evolution.doctorName}
+                              className="w-6 h-6 rounded-full object-cover border border-slate-200"
+                            />
+                          ) : (
+                            <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center border border-slate-200">
+                              <User className="h-3 w-3 text-slate-400" />
+                            </div>
+                          )}
+                          <span className="text-[10px] font-bold text-slate-400">Evaluado por: {visit.evolution?.doctorName}</span>
+                        </div>
                      </div>
                      <p className="text-sm text-slate-700 font-medium whitespace-pre-wrap">{visit.evolution?.notes}</p>
                   </div>
