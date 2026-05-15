@@ -41,7 +41,7 @@ function AppContent() {
     { id: 'consultation', label: 'Consulta Médica', roles: ['doctor', 'admin'], type: 'operational', icon: Stethoscope },
     { id: 'specialist', label: 'Especialidades', roles: ['ecografista', 'psiquiatra', 'odontologo'], type: 'operational', icon: Activity },
     { id: 'inventory', label: 'Existencias', roles: ['pharmacy', 'admin'], type: 'operational', icon: ShoppingBag },
-    { id: 'orders', label: activeRole === 'pharmacy' ? 'Cola de Dispensación' : 'Mis Pedidos', roles: ['pharmacy', 'admin'], type: 'operational', icon: Pill }
+    { id: 'orders', label: activeRole === 'pharmacy' ? 'Cola de Dispensación' : 'Mis Pedidos', roles: ['admin'], type: 'operational', icon: Pill }
   ] as const;
 
   type TabId = typeof NAV_ITEMS[number]['id'];
@@ -536,7 +536,7 @@ function AppContent() {
               <div className="pb-20">
                 {activeTab === 'inventory' && (activeRole === 'admin' || isPharmacyView) && <Inventory />}
                 {activeTab === 'history' && activeRole === 'admin' && <AdminHistory />}
-                {activeTab === 'orders' && (activeRole === 'admin' || isPharmacyView) && <OrdersList />}
+                {activeTab === 'orders' && activeRole === 'admin' && <OrdersList />}
                 {activeTab === 'admin' && isAdmin && activeRole === 'admin' && <AdminPanel />}
                 {activeTab === 'patients' && (isAdmission || isNurse || (activeRole === 'admin' && activeTab === 'patients')) && <Patients />}
                 {activeTab === 'patients' && isNutritionist && <NutritionistConsultation />}

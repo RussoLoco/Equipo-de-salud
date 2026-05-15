@@ -198,7 +198,7 @@ export default function Patients() {
 
       await batch.commit();
       
-      alert(`Paciente registrado y derivado a ${newPatient.serviceType} exitosamente.`);
+      // Toast message removed for iframe compatibility
       setIsRegistering(false);
       setNewPatient({ 
         dni: '', 
@@ -239,7 +239,7 @@ export default function Patients() {
         v.date >= today.toISOString()
       );
       if (activeVisits.length > 0) {
-        alert('Este paciente ya tiene una consulta en curso hoy.');
+        console.warn('Este paciente ya tiene una consulta en curso hoy.');
         return;
       }
 
@@ -277,10 +277,9 @@ export default function Patients() {
       batch.set(doc(db, 'visits', visitId), visitData);
       batch.set(doc(db, `patients/${patient.id}/visits`, visitId), visitData);
       await batch.commit();
-
-      alert(`Turno asignado correctamente para ${patient.name} en ${finalService}.`);
+      
+      // Toast message removed for iframe compatibility
     } catch (err) {
-      alert(`Error al registrar el turno: ${err instanceof Error ? err.message : String(err)}`);
       handleFirestoreError(err, OperationType.CREATE, `checkin/patients/${patient.id}/visits (and root)`);
     } finally {
       setIsSubmitting(false);
@@ -381,10 +380,9 @@ export default function Patients() {
       if (selectedPatient?.id === patientId) {
         setSelectedPatient(null);
       }
-      alert('Paciente eliminado correctamente.');
+      // Toast message removed for iFrame compatibility
     } catch (err: any) {
       console.error(err);
-      alert('Error al eliminar paciente: ' + (err?.message || 'Error desconocido. Verifica los permisos de admin.'));
       handleFirestoreError(err, OperationType.DELETE, 'patients');
     } finally {
       setIsSubmitting(false);
@@ -715,7 +713,7 @@ export default function Patients() {
                     <button 
                       onClick={() => {
                         if (isInQueue) {
-                          alert(`Este paciente ya se encuentra en proceso: ${getStatusLabel(activeVisit?.status || '')}`);
+                          console.warn(`Este paciente ya se encuentra en proceso: ${getStatusLabel(activeVisit?.status || '')}`);
                           return;
                         }
                         setSelectedVisitForVitals(null);

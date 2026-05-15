@@ -123,7 +123,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
     }
 
     if (visit.status === 'atendiendo_especialista' && visit.attendingDoctorId !== profile.uid) {
-      alert(`Esta consulta ya está siendo atendida por otro especialista.`);
+      console.warn(`Esta consulta ya está siendo atendida por otro especialista.`);
       return;
     }
 
@@ -221,7 +221,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
   const handleCompleteConsultation = async () => {
     if (!selectedVisit || !profile) return;
     if (!evolutionNotes) {
-      alert('Debes ingresar la nota de evolución.');
+      console.warn('Debes ingresar la nota de evolución.');
       return;
     }
 

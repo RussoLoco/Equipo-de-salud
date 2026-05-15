@@ -75,13 +75,13 @@ export default function NutritionistConsultation() {
     }
 
     if (visit.status === 'atendiendo_nutri' && visit.attendingDoctorId !== profile.uid) {
-      alert(`Esta consulta ya está siendo atendida por ${visit.attendingDoctorName || 'otro profesional'}.`);
+      console.warn(`Esta consulta ya está siendo atendida por ${visit.attendingDoctorName || 'otro profesional'}.`);
       return;
     }
     
     // Also block if it's being attended by a doctor (status 'atendiendo')
     if (visit.status === 'atendiendo') {
-      alert(`Esta consulta ya está siendo atendida por el Médico.`);
+      console.warn(`Esta consulta ya está siendo atendida por el Médico.`);
       return;
     }
 
@@ -202,7 +202,7 @@ export default function NutritionistConsultation() {
   const handleCompleteConsultation = async () => {
     if (!selectedVisit || !profile) return;
     if (!nutritionNotes) {
-      alert('Debes ingresar la nota de evolución nutricional.');
+      console.warn('Debes ingresar la nota de evolución nutricional.');
       return;
     }
 

@@ -38,6 +38,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'All' | 'Niño' | 'Adulto'>('All');
+  const [stockFilter, setStockFilter] = useState<'all' | 'low' | 'out'>('all');
   const [selectedMed, setSelectedMed] = useState<Medicine | null>(null);
   const [isOrderModalOpen, setIsOrderModalOpen] = useState(false);
   const [orderQuantity, setOrderQuantity] = useState('1');
@@ -82,8 +83,8 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
   }, [editingMed]);
 
   useEffect(() => {
-    // Cost Optimization: Limit initial fetch and order by drug name
-    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'), limit(1000));
+    // Ensure all items are fetched to prevent local write cache skipping with limits
+    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'));
     const unsubInv = onSnapshot(qInv, (snapshot) => {
       setMedicines(snapshot.docs.map(doc => doc.data() as Medicine));
       setLoading(false);
@@ -153,6 +154,10 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
       setIsEditModalOpen(false);
       setEditingMed(null);
       setIsAddingNew(false);
+      
+      // Clear filters so the user sees the newly added/edited medicine
+      setSearchTerm('');
+      setCategoryFilter('All');
     } catch (err) {
       handleFirestoreError(err, isAddingNew ? OperationType.CREATE : OperationType.UPDATE, 'inventory');
     } finally {
@@ -160,7 +165,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     }
   };
 
-  const filteredMedicines = medicines.filter(m => {
+  const baseFilteredMedicines = medicines.filter(m => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = (m.drug?.toLowerCase().includes(searchLower)) || 
                          (m.brandName?.toLowerCase().includes(searchLower)) ||
@@ -169,6 +174,13 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                          m.laboratory.toLowerCase().includes(searchLower);
     const matchesCategory = categoryFilter === 'All' || m.category === categoryFilter;
     return matchesSearch && matchesCategory;
+  });
+
+  const filteredMedicines = baseFilteredMedicines.filter(m => {
+    const stockStr = String(m.stock || '');
+    if (stockFilter === 'out') return stockStr === '0' || stockStr === '';
+    if (stockFilter === 'low') return stockStr !== '0' && stockStr !== '' && (parseInt(stockStr) <= 10 || stockStr.length < 5);
+    return true;
   });
 
   const addToCart = (med: Medicine) => {
@@ -210,7 +222,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     if (cart.length === 0 || !profile) return;
     
     if (!selectedPatientId) {
-      alert('Por favor selecciona un paciente para este pedido.');
+      console.warn('Por favor selecciona un paciente para este pedido.');
       return;
     }
 
@@ -260,13 +272,13 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     }
   };
 
-  const totalSKU = filteredMedicines.length;
+  const totalSKU = baseFilteredMedicines.length;
   // Stock status logic for strings
-  const lowStockCount = filteredMedicines.filter(m => {
+  const lowStockCount = baseFilteredMedicines.filter(m => {
     const s = String(m.stock || '');
     return s !== '0' && s !== '' && (parseInt(s) <= 10 || s.length < 5); // Rough heuristic for codes
   }).length;
-  const outOfStockCount = filteredMedicines.filter(m => {
+  const outOfStockCount = baseFilteredMedicines.filter(m => {
     const s = String(m.stock || '');
     return s === '0' || s === '';
   }).length;
@@ -364,19 +376,36 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
-            className="group relative overflow-hidden bg-white p-6 rounded-[2rem] border border-slate-200 hover:border-blue-200 transition-colors duration-300 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(59,130,246,0.15)] flex flex-col"
+            onClick={() => setStockFilter(stockFilter === 'all' ? 'all' : 'all')}
+            className={cn(
+              "group relative overflow-hidden p-6 rounded-[2rem] border transition-colors duration-300 flex flex-col cursor-pointer",
+              stockFilter === 'all'
+                ? "bg-blue-600 border-blue-600 shadow-[0_8px_24px_-8px_rgba(59,130,246,0.5)]"
+                : "bg-white border-slate-200 hover:border-blue-200 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(59,130,246,0.15)]"
+            )}
           >
             <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-500 pointer-events-none">
-              <Layers className="w-32 h-32 text-blue-500" />
+              <Layers className={cn("w-32 h-32", stockFilter === 'all' ? "text-white" : "text-blue-500")} />
             </div>
             <div className="relative z-10 flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
+              <div className={cn(
+                "w-10 h-10 rounded-2xl flex items-center justify-center border transition-colors duration-300 group-hover:scale-110",
+                stockFilter === 'all'
+                  ? "bg-white/20 text-white border-white/20"
+                  : "bg-blue-50 text-blue-600 border-blue-100 group-hover:bg-blue-600 group-hover:text-white"
+              )}>
                 <Package className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover:text-blue-500 transition-colors">Total SKU</p>
+              <p className={cn(
+                "text-[10px] font-black uppercase tracking-[0.2em] transition-colors",
+                stockFilter === 'all' ? "text-blue-100" : "text-slate-400 group-hover:text-blue-500"
+              )}>Total SKU</p>
             </div>
             <div className="relative z-10 mt-auto">
-              <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">{totalSKU}</p>
+              <p className={cn(
+                "text-4xl sm:text-5xl font-black tracking-tight transition-colors",
+                stockFilter === 'all' ? "text-white" : "text-slate-900 group-hover:text-blue-500"
+              )}>{totalSKU}</p>
             </div>
           </motion.div>
 
@@ -384,19 +413,36 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
-            className="group relative overflow-hidden bg-white p-6 rounded-[2rem] border border-slate-200 hover:border-orange-200 transition-colors duration-300 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(249,115,22,0.15)] flex flex-col"
+            onClick={() => setStockFilter(stockFilter === 'low' ? 'all' : 'low')}
+            className={cn(
+              "group relative overflow-hidden p-6 rounded-[2rem] border transition-colors duration-300 flex flex-col cursor-pointer",
+              stockFilter === 'low'
+                ? "bg-orange-500 border-orange-500 shadow-[0_8px_24px_-8px_rgba(249,115,22,0.5)]"
+                : "bg-white border-slate-200 hover:border-orange-200 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(249,115,22,0.15)]"
+            )}
           >
             <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-500 pointer-events-none">
-              <AlertTriangle className="w-32 h-32 text-orange-500" />
+              <AlertTriangle className={cn("w-32 h-32", stockFilter === 'low' ? "text-white" : "text-orange-500")} />
             </div>
             <div className="relative z-10 flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100 group-hover:bg-orange-600 group-hover:text-white transition-colors duration-300">
+              <div className={cn(
+                "w-10 h-10 rounded-2xl flex items-center justify-center border transition-colors duration-300 group-hover:scale-110",
+                stockFilter === 'low'
+                  ? "bg-white/20 text-white border-white/20"
+                  : "bg-orange-50 text-orange-600 border-orange-100 group-hover:bg-orange-600 group-hover:text-white"
+              )}>
                 <AlertTriangle className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover:text-orange-500 transition-colors">Stock Bajo</p>
+              <p className={cn(
+                "text-[10px] font-black uppercase tracking-[0.2em] transition-colors",
+                stockFilter === 'low' ? "text-orange-100" : "text-slate-400 group-hover:text-orange-500"
+              )}>Stock Bajo</p>
             </div>
             <div className="relative z-10 mt-auto">
-              <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight group-hover:text-orange-500 transition-colors">{lowStockCount}</p>
+              <p className={cn(
+                "text-4xl sm:text-5xl font-black tracking-tight transition-colors",
+                stockFilter === 'low' ? "text-white" : "text-slate-900 group-hover:text-orange-500"
+              )}>{lowStockCount}</p>
             </div>
           </motion.div>
 
@@ -404,19 +450,36 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
-            className="group relative overflow-hidden bg-white p-6 rounded-[2rem] border border-slate-200 hover:border-red-200 transition-colors duration-300 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(239,68,68,0.15)] flex flex-col"
+            onClick={() => setStockFilter(stockFilter === 'out' ? 'all' : 'out')}
+            className={cn(
+              "group relative overflow-hidden p-6 rounded-[2rem] border transition-colors duration-300 flex flex-col cursor-pointer",
+              stockFilter === 'out'
+                ? "bg-red-500 border-red-500 shadow-[0_8px_24px_-8px_rgba(239,68,68,0.5)]"
+                : "bg-white border-slate-200 hover:border-red-200 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(239,68,68,0.15)]"
+            )}
           >
             <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-500 pointer-events-none">
-              <X className="w-32 h-32 text-red-500" />
+              <X className={cn("w-32 h-32", stockFilter === 'out' ? "text-white" : "text-red-500")} />
             </div>
             <div className="relative z-10 flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center border border-red-100 group-hover:bg-red-600 group-hover:text-white transition-colors duration-300">
+              <div className={cn(
+                "w-10 h-10 rounded-2xl flex items-center justify-center border transition-colors duration-300 group-hover:scale-110",
+                stockFilter === 'out'
+                  ? "bg-white/20 text-white border-white/20"
+                  : "bg-red-50 text-red-600 border-red-100 group-hover:bg-red-600 group-hover:text-white"
+              )}>
                 <ShoppingCart className="w-4 h-4" />
               </div>
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover:text-red-500 transition-colors">Agotados</p>
+              <p className={cn(
+                "text-[10px] font-black uppercase tracking-[0.2em] transition-colors",
+                stockFilter === 'out' ? "text-red-100" : "text-slate-400 group-hover:text-red-500"
+              )}>Agotados</p>
             </div>
             <div className="relative z-10 mt-auto">
-              <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight group-hover:text-red-500 transition-colors">{outOfStockCount}</p>
+              <p className={cn(
+                "text-4xl sm:text-5xl font-black tracking-tight transition-colors",
+                stockFilter === 'out' ? "text-white" : "text-slate-900 group-hover:text-red-500"
+              )}>{outOfStockCount}</p>
             </div>
           </motion.div>
         </div>
@@ -436,13 +499,13 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                 <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-32 bg-slate-50">Vencimiento</th>
                 <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-24 bg-slate-50">Tipo</th>
                 <th className="px-4 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center w-32 bg-slate-50">Ubicación</th>
-                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right bg-slate-50 sticky right-0 z-30">Acciones</th>
+                <th className="px-6 py-4 text-[10px] font-black text-slate-500 uppercase tracking-widest text-right bg-slate-50 sticky right-0 z-30"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {filteredMedicines.map((med) => (
-                <tr key={med.drugId} className="group hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-5 sticky left-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-b border-slate-100">
+                <tr key={med.drugId} className="group hover:bg-slate-50 transition-colors">
+                  <td className="px-6 py-5 sticky left-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-b border-slate-100">
                     <div className="flex items-center gap-4">
                       <div className="w-10 h-10 rounded-2xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
                         <Package className="h-5 w-5" />
@@ -488,7 +551,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                       <span className="text-[10px] font-bold tracking-tight italic">{med.location || 'Vacío'}</span>
                     </div>
                   </td>
-                  <td className="px-6 py-5 text-right sticky right-0 bg-white group-hover:bg-slate-50/50 transition-colors z-10 border-b border-slate-100">
+                  <td className="px-6 py-5 text-right sticky right-0 bg-white group-hover:bg-slate-50 transition-colors z-10 border-b border-slate-100">
                     <div className="flex items-center justify-end gap-3">
                       {isSelectionMode && externalCart?.find(c => c.drugId === med.drugId) && (
                         <div className="flex items-center gap-1.5 p-1 bg-blue-50/50 rounded-xl border border-blue-100 animate-in fade-in slide-in-from-right-2 duration-300">
@@ -531,38 +594,40 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                           </button>
                         </div>
                       )}
-                      <div className="flex flex-col items-end">
-                        <button 
-                          onClick={() => {
-                            if (isSelectionMode && setExternalCart) {
-                              if (externalCart?.find(c => c.drugId === med.drugId)) {
-                                setExternalCart(externalCart.filter(c => c.drugId !== med.drugId));
+                      {activeRole !== 'pharmacy' && (
+                        <div className="flex flex-col items-end">
+                          <button 
+                            onClick={() => {
+                              if (isSelectionMode && setExternalCart) {
+                                if (externalCart?.find(c => c.drugId === med.drugId)) {
+                                  setExternalCart(externalCart.filter(c => c.drugId !== med.drugId));
+                                } else {
+                                  setExternalCart([...(externalCart || []), { 
+                                    drugId: med.drugId, 
+                                    drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug, 
+                                    quantity: "1", 
+                                    location: med.location || '---',
+                                    laboratory: med.laboratory,
+                                    stockAtTime: med.stock 
+                                  }]);
+                                }
                               } else {
-                                setExternalCart([...(externalCart || []), { 
-                                  drugId: med.drugId, 
-                                  drugName: med.brandName ? `${med.drug} (${med.brandName})` : med.drug, 
-                                  quantity: "1", 
-                                  location: med.location || '---',
-                                  laboratory: med.laboratory,
-                                  stockAtTime: med.stock 
-                                }]);
+                                addToCart(med);
                               }
-                            } else {
-                              addToCart(med);
-                            }
-                          }}
-                          disabled={(med.stock === '0' || !med.stock) && !externalCart?.find(c => c.drugId === med.drugId)}
-                          className={cn(
-                            "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 flex items-center gap-2",
-                            (externalCart || cart).find(c => c.drugId === med.drugId) 
-                              ? "bg-blue-600 text-white hover:bg-blue-700" 
-                              : "bg-slate-900 text-white hover:bg-blue-600 shadow-slate-200"
-                          )}
-                        >
-                          {(externalCart || cart).find(c => c.drugId === med.drugId) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                          {(externalCart || cart).find(c => c.drugId === med.drugId) ? 'Agregado' : 'Pedido'}
-                        </button>
-                      </div>
+                            }}
+                            disabled={(med.stock === '0' || !med.stock) && !externalCart?.find(c => c.drugId === med.drugId)}
+                            className={cn(
+                              "px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-sm active:scale-95 flex items-center gap-2",
+                              (externalCart || cart).find(c => c.drugId === med.drugId) 
+                                ? "bg-blue-600 text-white hover:bg-blue-700" 
+                                : "bg-slate-900 text-white hover:bg-blue-600 shadow-slate-200"
+                            )}
+                          >
+                            {(externalCart || cart).find(c => c.drugId === med.drugId) ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                            {(externalCart || cart).find(c => c.drugId === med.drugId) ? 'Agregado' : 'Pedido'}
+                          </button>
+                        </div>
+                      )}
                       {(activeRole === 'pharmacy' || activeRole === 'admin') && (
                         <div className="flex items-center gap-1">
                           <button 
@@ -625,18 +690,20 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                    <p className="text-[9px] font-bold text-slate-400 uppercase">Loc: {med.location || 'N/A'}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button 
-                    onClick={() => addToCart(med)}
-                    disabled={med.stock === '0' || !med.stock}
-                    className={cn(
-                      "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm",
-                      cart.find(c => c.drugId === med.drugId) 
-                        ? "bg-blue-600 text-white" 
-                        : "bg-slate-900 text-white"
-                    )}
-                  >
-                    {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : '+ Pedido'}
-                  </button>
+                  {activeRole !== 'pharmacy' && (
+                    <button 
+                      onClick={() => addToCart(med)}
+                      disabled={med.stock === '0' || !med.stock}
+                      className={cn(
+                        "px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all shadow-sm",
+                        cart.find(c => c.drugId === med.drugId) 
+                          ? "bg-blue-600 text-white" 
+                          : "bg-slate-900 text-white"
+                      )}
+                    >
+                      {cart.find(c => c.drugId === med.drugId) ? 'Agregado' : '+ Pedido'}
+                    </button>
+                  )}
                   {(activeRole === 'pharmacy' || activeRole === 'admin') && (
                     <button 
                       onClick={() => { setEditingMed(med); setIsEditModalOpen(true); }}
@@ -692,7 +759,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
       )}
 
       {/* Floating Cart Button */}
-      {cart.length > 0 && !isSelectionMode && (
+      {cart.length > 0 && !isSelectionMode && activeRole !== 'pharmacy' && (
         <button 
           onClick={() => setIsCartOpen(true)}
           className="fixed bottom-8 right-8 z-50 bg-blue-600 text-white p-4 rounded-3xl shadow-2xl shadow-blue-200 flex items-center gap-4 animate-in slide-in-from-bottom-5 duration-300 group"
@@ -995,6 +1062,15 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
                       className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100"
                       value={editingMed.presentation || ''}
                       onChange={e => setEditingMed({...editingMed, presentation: e.target.value})}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 block ml-1">Acción Terapéutica</label>
+                    <input 
+                      type="text" 
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-2xl text-sm font-bold text-slate-700 focus:ring-2 focus:ring-blue-100"
+                      value={editingMed.therapeuticAction || ''}
+                      onChange={e => setEditingMed({...editingMed, therapeuticAction: e.target.value})}
                     />
                   </div>
                 </div>

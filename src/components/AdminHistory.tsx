@@ -63,10 +63,9 @@ export default function AdminHistory() {
       batch.delete(doc(db, 'patients', id));
       
       await batch.commit();
-      alert('Paciente e historial de visitas eliminados correctamente.');
+      // Toast message removed for iFrame compatibility
     } catch (err: any) {
       console.error(err);
-      alert('Error eliminando paciente: ' + (err?.message || 'Revisa conexión y permisos.'));
       handleFirestoreError(err, OperationType.DELETE, `patients/${id}`);
     } finally {
       setIsDeleting(false);
@@ -113,10 +112,9 @@ export default function AdminHistory() {
         patientsCount += snap.size;
       }
       
-      alert(`Limpieza total exitosa: ${patientsCount} pacientes y ${visitsCount} registros de historial eliminados.`);
+      // Toast message removed for iFrame compatibility
     } catch (err: any) {
       console.error(err);
-      alert('Error limpiando pacientes: ' + (err?.message || 'Asegúrate de tener permisos de Admin.'));
       handleFirestoreError(err, OperationType.DELETE, 'patients_all_wipe');
     } finally {
       setIsDeleting(false);

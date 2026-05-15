@@ -103,7 +103,7 @@ export default function MedicalConsultation() {
 
     // If claimed by another doctor
     if (visit.status === 'atendiendo' && visit.attendingDoctorId !== profile.uid) {
-      alert(`Esta consulta ya está siendo atendida por el Dr/a. ${visit.attendingDoctorName || 'otro profesional'}.`);
+      console.warn(`Esta consulta ya está siendo atendida por el Dr/a. ${visit.attendingDoctorName || 'otro profesional'}.`);
       return;
     }
 
@@ -166,7 +166,7 @@ export default function MedicalConsultation() {
       setIsEditingBiometrics(false);
     } catch (error) {
       console.error(error);
-      alert("Error actualizando biometría, revisa permisos o conexión.");
+      console.warn("Error actualizando biometría, revisa permisos o conexión.");
     } finally {
       setIsSubmitting(false);
     }
@@ -276,7 +276,7 @@ export default function MedicalConsultation() {
   const handleCompleteConsultation = async (referralService?: PatientVisit['serviceType']) => {
     if (!selectedVisit || !profile) return;
     if (!evolutionNotes && !referralService) {
-      alert('Debes ingresar la nota de evolución médica antes de finalizar.');
+      console.warn('Debes ingresar la nota de evolución médica antes de finalizar.');
       return;
     }
 
@@ -355,9 +355,9 @@ export default function MedicalConsultation() {
       await batch.commit();
       
       if (referralService) {
-        alert(`Consulta guardada y paciente derivado a ${getServiceLabel(referralService)} correctamente.`);
+        console.warn(`Consulta guardada y paciente derivado a ${getServiceLabel(referralService)} correctamente.`);
       } else {
-        alert('Consulta finalizada y guardada correctamente.');
+        console.warn('Consulta finalizada y guardada correctamente.');
       }
 
       setSelectedVisit(null);
@@ -366,7 +366,7 @@ export default function MedicalConsultation() {
       setCart([]);
       setShowReferralModal(false);
     } catch (err) {
-      alert(`Error al procesar la consulta: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(`Error al procesar la consulta: ${err instanceof Error ? err.message : String(err)}`);
       handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);

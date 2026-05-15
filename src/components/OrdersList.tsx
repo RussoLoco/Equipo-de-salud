@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, where, orderBy, writeBatch, doc, getDocs
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Order, Medicine } from '../types';
 import { useAuth } from './AuthProvider';
-import { CheckCircle, Clock, MapPin, User, Pill, ArrowRight, Loader2, ShoppingBag, ClipboardList, History } from 'lucide-react';
+import { CheckCircle, Clock, MapPin, User, Pill, ArrowRight, Loader2, ShoppingBag, ClipboardList, History, Check } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { cn } from '../lib/utils';
@@ -124,7 +124,7 @@ export default function OrdersList() {
       await batch.commit();
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, 'orders/inventory');
-      alert('Error: ' + (error instanceof Error ? error.message : 'No se pudo procesar'));
+      console.warn('Error: ' + (error instanceof Error ? error.message : 'No se pudo procesar'));
     } finally {
       setProcessingId(null);
     }
