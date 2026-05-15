@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'motion/react';
 import { collection, query, onSnapshot, setDoc, serverTimestamp, writeBatch, doc, orderBy, where, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Medicine, Order, OrderItem, Patient } from '../types';
@@ -358,18 +359,65 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
 
       {!isSelectionMode && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Total SKU</p>
-            <p className="text-3xl font-black text-slate-900">{totalSKU}</p>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Stock Bajo</p>
-            <p className="text-3xl font-black text-orange-500">{lowStockCount}</p>
-          </div>
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Agotados</p>
-            <p className="text-3xl font-black text-red-500">{outOfStockCount}</p>
-          </div>
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1, duration: 0.5, ease: "easeOut" }}
+            className="group relative overflow-hidden bg-white p-6 rounded-[2rem] border border-slate-200 hover:border-blue-200 transition-colors duration-300 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(59,130,246,0.15)] flex flex-col"
+          >
+            <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+              <Layers className="w-32 h-32 text-blue-500" />
+            </div>
+            <div className="relative z-10 flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center border border-blue-100 group-hover:bg-blue-600 group-hover:text-white transition-colors duration-300">
+                <Package className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover:text-blue-500 transition-colors">Total SKU</p>
+            </div>
+            <div className="relative z-10 mt-auto">
+              <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight">{totalSKU}</p>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.5, ease: "easeOut" }}
+            className="group relative overflow-hidden bg-white p-6 rounded-[2rem] border border-slate-200 hover:border-orange-200 transition-colors duration-300 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(249,115,22,0.15)] flex flex-col"
+          >
+            <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+              <AlertTriangle className="w-32 h-32 text-orange-500" />
+            </div>
+            <div className="relative z-10 flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-100 group-hover:bg-orange-600 group-hover:text-white transition-colors duration-300">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover:text-orange-500 transition-colors">Stock Bajo</p>
+            </div>
+            <div className="relative z-10 mt-auto">
+              <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight group-hover:text-orange-500 transition-colors">{lowStockCount}</p>
+            </div>
+          </motion.div>
+
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.3, duration: 0.5, ease: "easeOut" }}
+            className="group relative overflow-hidden bg-white p-6 rounded-[2rem] border border-slate-200 hover:border-red-200 transition-colors duration-300 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] hover:shadow-[0_8px_24px_-8px_rgba(239,68,68,0.15)] flex flex-col"
+          >
+            <div className="absolute -top-4 -right-4 p-4 opacity-5 group-hover:opacity-10 group-hover:scale-110 transition-all duration-500 pointer-events-none">
+              <X className="w-32 h-32 text-red-500" />
+            </div>
+            <div className="relative z-10 flex items-center gap-3 mb-6">
+              <div className="w-10 h-10 rounded-2xl bg-red-50 text-red-600 flex items-center justify-center border border-red-100 group-hover:bg-red-600 group-hover:text-white transition-colors duration-300">
+                <ShoppingCart className="w-4 h-4" />
+              </div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] group-hover:text-red-500 transition-colors">Agotados</p>
+            </div>
+            <div className="relative z-10 mt-auto">
+              <p className="text-4xl sm:text-5xl font-black text-slate-900 tracking-tight group-hover:text-red-500 transition-colors">{outOfStockCount}</p>
+            </div>
+          </motion.div>
         </div>
       )}
 

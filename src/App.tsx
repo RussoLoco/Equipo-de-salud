@@ -68,7 +68,10 @@ function AppContent() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isOperationalOpen, setIsOperationalOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [showUpcomingModal, setShowUpcomingModal] = useState(false);
 
   if (!profile) return null;
 
@@ -111,7 +114,13 @@ function AppContent() {
           >
             <LayoutDashboard className="h-5 w-5" />
           </button>
-          <div className="flex items-center gap-2 group cursor-pointer" onClick={() => setActiveTab('inventory')}>
+          <button 
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="p-2 -ml-2 text-slate-500 hover:text-slate-900 hidden lg:block"
+          >
+            <LayoutDashboard className="h-5 w-5" />
+          </button>
+          <button className="flex items-center gap-2 group cursor-pointer text-left" onClick={() => setShowMapModal(true)}>
             <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-lg shadow-blue-200 group-hover:scale-105 transition-transform">
               <div className="relative w-4 h-4 flex items-center justify-center">
                 <div className="absolute w-4 h-1 bg-white rounded-full"></div>
@@ -120,9 +129,9 @@ function AppContent() {
             </div>
             <div className="flex flex-col">
               <h1 className="text-base sm:text-lg font-black text-slate-800 tracking-tight leading-none uppercase">Equipo De <span className="text-blue-600">Salud</span></h1>
-              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores</p>
+              <p className="text-[8px] sm:text-[9px] font-bold text-slate-400 capitalize tracking-widest mt-0.5">Fundación Valores Para Mi Ciudad</p>
             </div>
-          </div>
+          </button>
         </div>
         
         <div className="flex items-center gap-4 sm:gap-6">
@@ -311,33 +320,36 @@ function AppContent() {
 
         {/* Side Navigation */}
         <aside className={cn(
-          "fixed inset-y-0 left-0 w-80 bg-white border-r border-slate-200 p-8 flex flex-col gap-10 overflow-y-auto transition-transform duration-300 ease-in-out z-[70] lg:relative lg:translate-x-0 lg:z-0",
-          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          "fixed inset-y-0 left-0 bg-white border-r border-slate-200 py-8 flex flex-col gap-10 overflow-y-auto overflow-x-hidden transition-all duration-300 ease-in-out z-[70] lg:relative lg:translate-x-0 lg:z-0",
+          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full",
+          isSidebarCollapsed ? "w-80 px-8 lg:w-[5.5rem] lg:px-4 lg:items-center" : "w-80 px-8"
         )}>
           {/* Status Check */}
-          <div className="bg-slate-900 rounded-3xl p-5 shadow-xl shadow-slate-200 hidden lg:block">
-             <div className="flex items-center justify-between mb-4">
-                <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center">
+          <div className={cn("bg-slate-900 rounded-3xl p-5 shadow-xl shadow-slate-200 hidden lg:block transition-all w-full", isSidebarCollapsed && "lg:p-3 lg:rounded-2xl")}>
+             <div className={cn("flex items-center", isSidebarCollapsed ? "lg:justify-center mb-0" : "justify-between mb-4")}>
+                <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-400/30 flex items-center justify-center shrink-0">
                    <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(96,165,250,0.8)]"></div>
                 </div>
-                <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest px-2 py-0.5 rounded bg-blue-500/10">Online</span>
+                <span className={cn("text-[8px] font-black text-blue-400 uppercase tracking-widest px-2 py-0.5 rounded bg-blue-500/10", isSidebarCollapsed && "lg:hidden")}>Online</span>
              </div>
-             <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] mb-1">Módulo Activo</p>
-             <p className="text-xs font-bold text-slate-400 truncate">
-               {activeRole === 'pharmacy' ? 'Dispensación Farmacéutica' : 
-                activeRole === 'admin' ? 'Infraestructura Admin' : 
-                activeRole === 'admission' ? 'Gestión de Pacientes' :
-                activeRole === 'nurse' ? 'Antropometría y Enfermería' :
-                activeRole === 'nutritionist' ? 'Evaluación Nutricional' :
-                activeRole === 'ecografista' ? 'Gabinete de Ecografía' :
-                activeRole === 'psiquiatra' ? 'Consultorio Psiquiatra' :
-                activeRole === 'odontologo' ? 'Consultorio Odontológico' :
-                'Atención Médica'}
-             </p>
+             <div className={cn(isSidebarCollapsed && "lg:hidden")}>
+               <p className="text-[10px] font-black text-white uppercase tracking-[0.2em] mb-1">Módulo Activo</p>
+               <p className="text-xs font-bold text-slate-400 truncate">
+                 {activeRole === 'pharmacy' ? 'Dispensación Farmacéutica' : 
+                  activeRole === 'admin' ? 'Infraestructura Admin' : 
+                  activeRole === 'admission' ? 'Gestión de Pacientes' :
+                  activeRole === 'nurse' ? 'Antropometría y Enfermería' :
+                  activeRole === 'nutritionist' ? 'Evaluación Nutricional' :
+                  activeRole === 'ecografista' ? 'Gabinete de Ecografía' :
+                  activeRole === 'psiquiatra' ? 'Consultorio Psiquiatra' :
+                  activeRole === 'odontologo' ? 'Consultorio Odontológico' :
+                  'Atención Médica'}
+               </p>
+             </div>
           </div>
 
-          <nav className="space-y-1">
-            <p className="px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4">Menú Principal</p>
+          <nav className="space-y-1 w-full">
+            <p className={cn("px-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.25em] mb-4 text-center lg:text-left", isSidebarCollapsed && "lg:hidden")}>Menú Principal</p>
             
             {activeRole === 'admin' ? (
               <div className="space-y-4">
@@ -351,17 +363,19 @@ function AppContent() {
                         setIsMobileMenuOpen(false);
                       }}
                       className={cn(
-                        "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
+                        "flex items-center w-full rounded-2xl font-bold transition-all text-sm group relative",
+                        isSidebarCollapsed ? "lg:p-3 lg:justify-center p-4 gap-4" : "p-4 gap-4",
                         activeTab === item.id 
                           ? "bg-slate-100 text-slate-900 shadow-sm" 
                           : "text-slate-500 hover:bg-slate-50"
                       )}
+                      title={isSidebarCollapsed ? item.label : undefined}
                     >
                       <item.icon className={cn(
-                        "h-5 w-5 transition-colors",
+                        "h-5 w-5 transition-colors shrink-0",
                         activeTab === item.id ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
                       )} />
-                      {item.label}
+                      <span className={cn(isSidebarCollapsed && "lg:hidden")}>{item.label}</span>
                     </button>
                   ))}
                 </div>
@@ -370,14 +384,19 @@ function AppContent() {
                 <div className="space-y-1">
                   <button 
                     onClick={() => setIsOperationalOpen(!isOperationalOpen)}
-                    className="flex items-center justify-between w-full p-4 rounded-2xl font-bold text-sm text-slate-400 hover:bg-slate-50 transition-all uppercase tracking-widest text-[10px]"
+                    className={cn(
+                      "flex items-center w-full rounded-2xl font-bold text-sm text-slate-400 hover:bg-slate-50 transition-all uppercase tracking-widest text-[10px]",
+                      isSidebarCollapsed ? "lg:p-3 lg:justify-center p-4 justify-between" : "p-4 justify-between"
+                    )}
+                    title={isSidebarCollapsed ? "Vistas Operativas" : undefined}
                   >
-                    Vistas Operativas
-                    <ChevronDown className={cn("h-4 w-4 transition-transform", isOperationalOpen && "rotate-180")} />
+                    <span className={cn(isSidebarCollapsed && "lg:hidden")}>Vistas Operativas</span>
+                    <ChevronDown className={cn("h-4 w-4 transition-transform shrink-0", isOperationalOpen && "rotate-180", isSidebarCollapsed && "lg:hidden")} />
+                    {isSidebarCollapsed && <LayoutDashboard className="h-4 w-4 hidden lg:block shrink-0" />}
                   </button>
                   
                   {isOperationalOpen && (
-                    <div className="space-y-1 ml-4 border-l border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className={cn("space-y-1 border-slate-100 animate-in fade-in slide-in-from-top-1 duration-200", isSidebarCollapsed ? "lg:border-none lg:ml-0 ml-4 border-l" : "ml-4 border-l")}>
                       {NAV_ITEMS.filter(item => (item.roles as readonly string[]).includes('admin') && item.type === 'operational').map(item => (
                         <button 
                           key={item.id}
@@ -386,17 +405,19 @@ function AppContent() {
                             setIsMobileMenuOpen(false);
                           }}
                           className={cn(
-                            "flex items-center gap-4 w-full p-3 rounded-xl font-bold transition-all text-xs group",
+                            "flex items-center w-full rounded-xl font-bold transition-all text-xs group relative",
+                            isSidebarCollapsed ? "lg:p-3 lg:justify-center p-3 gap-4" : "p-3 gap-4",
                             activeTab === item.id 
                               ? "text-blue-600 bg-blue-50" 
                               : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
                           )}
+                          title={isSidebarCollapsed ? item.label : undefined}
                         >
                           <item.icon className={cn(
-                            "h-4 w-4 transition-colors",
+                            "h-4 w-4 transition-colors shrink-0",
                             activeTab === item.id ? "text-blue-600" : "text-slate-300"
                           )} />
-                          {item.label}
+                          <span className={cn(isSidebarCollapsed && "lg:hidden")}>{item.label}</span>
                         </button>
                       ))}
                     </div>
@@ -413,40 +434,73 @@ function AppContent() {
                     setIsMobileMenuOpen(false);
                   }}
                   className={cn(
-                    "flex items-center gap-4 w-full p-4 rounded-2xl font-bold transition-all text-sm group",
+                    "flex items-center w-full rounded-2xl font-bold transition-all text-sm group relative",
+                    isSidebarCollapsed ? "lg:p-3 lg:justify-center p-4 gap-4" : "p-4 gap-4",
                     activeTab === item.id 
                       ? "bg-slate-100 text-slate-900 shadow-sm" 
                       : "text-slate-500 hover:bg-slate-50"
                   )}
+                  title={isSidebarCollapsed ? item.label : undefined}
                 >
                   <item.icon className={cn(
-                    "h-5 w-5 transition-colors",
+                    "h-5 w-5 transition-colors shrink-0",
                     activeTab === item.id ? "text-blue-600" : "text-slate-400 group-hover:text-slate-600"
                   )} />
-                  {item.label}
+                  <span className={cn(isSidebarCollapsed && "lg:hidden")}>{item.label}</span>
                 </button>
               ))
             )}
           </nav>
 
-          <div className="mt-auto space-y-4">
-            <div className="bg-blue-600 rounded-3xl p-6 text-white overflow-hidden relative shadow-xl shadow-blue-100">
+          <div className="mt-auto space-y-4 w-full">
+            <div 
+              className={cn("bg-blue-600 rounded-3xl text-white overflow-hidden relative shadow-xl shadow-blue-100 transition-all cursor-pointer", isSidebarCollapsed ? "lg:p-3 lg:rounded-2xl lg:flex lg:justify-center lg:items-center p-6" : "p-6")}
+              onClick={() => isSidebarCollapsed && setShowSupportModal(true)}
+              title={isSidebarCollapsed ? "Ayuda & Soporte" : undefined}
+            >
                <div className="absolute -right-4 -top-4 w-24 h-24 bg-white/10 rounded-full blur-2xl"></div>
-               <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-3">Ayuda & Soporte</p>
-               <p className="text-xs font-bold leading-relaxed">¿Necesitas asistencia técnica con la plataforma?</p>
-               <button 
-                onClick={() => setShowSupportModal(true)}
-                className="mt-4 w-full py-2 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-colors"
-               >
-                Contactar IT
-               </button>
+               <div className={cn(isSidebarCollapsed && "lg:hidden")}>
+                 <p className="text-[9px] font-black uppercase tracking-widest opacity-80 mb-3">Ayuda & Soporte</p>
+                 <p className="text-xs font-bold leading-relaxed">¿Necesitas asistencia técnica con la plataforma?</p>
+                 <button 
+                  onClick={(e) => { e.stopPropagation(); setShowSupportModal(true); }}
+                  className="mt-4 w-full py-2 bg-white text-blue-600 rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-blue-50 transition-colors relative z-10"
+                 >
+                  Contactar IT
+                 </button>
+               </div>
+               {isSidebarCollapsed && (
+                 <MessageCircle className="h-6 w-6 text-white hidden lg:block shrink-0" />
+               )}
             </div>
             
-            <div className="pt-4 border-t border-slate-50 opacity-40">
-              <p className="text-center text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                Versión Estable 2.4.0
-              </p>
-            </div>
+            <motion.div 
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6, duration: 0.8, ease: "easeOut" }}
+              onClick={() => setShowUpcomingModal(true)}
+              className={cn("border-t border-slate-100 flex items-center gap-3.5 group cursor-pointer hover:bg-slate-50 p-3 -mx-3 rounded-2xl transition-all duration-300 ease-out", isSidebarCollapsed ? "lg:justify-center lg:-mx-0 lg:p-2 lg:mt-2 lg:pt-2 mt-4 pt-4" : "mt-4 pt-4")}
+              title={isSidebarCollapsed ? "Engineering by S&S" : undefined}
+            >
+              <div className="relative w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-[0_2px_8px_-4px_rgba(0,0,0,0.05)] flex items-center justify-center shrink-0 overflow-hidden group-hover:border-blue-200 group-hover:shadow-[0_4px_12px_-4px_rgba(59,130,246,0.2)] transition-all duration-300">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-50/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                <div className="relative flex flex-col items-center justify-center leading-none">
+                  <span className="text-[11px] font-black text-slate-300 group-hover:text-blue-500 transition-colors duration-300 tracking-[-0.05em]">S&S</span>
+                </div>
+              </div>
+              
+              <div className={cn("flex flex-col flex-1", isSidebarCollapsed && "lg:hidden")}>
+                <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] leading-none mb-1.5 group-hover:text-blue-500 transition-colors duration-300">Engineering by</p>
+                <div className="flex items-center justify-between">
+                  <p className="text-[13px] font-black text-slate-800 tracking-tight leading-none uppercase italic group-hover:text-slate-900 transition-colors duration-300">
+                    S&S <span className="text-blue-600 font-black">Developments</span>
+                  </p>
+                  <svg className="w-3.5 h-3.5 text-blue-500 transform -translate-x-2 opacity-0 group-hover:translate-x-0 group-hover:opacity-100 transition-all duration-300 ease-out" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                  </svg>
+                </div>
+              </div>
+            </motion.div>
           </div>
         </aside>
 
@@ -493,27 +547,68 @@ function AppContent() {
 
           {/* Bottom Status Bar */}
           <footer className="h-16 bg-white border-t border-slate-100 flex items-center justify-between px-10 shrink-0">
-            <div className="flex items-center gap-4">
-              <div className="relative flex items-center justify-center">
-                <div className="absolute w-3 h-3 bg-emerald-400 rounded-full blur-sm opacity-50 animate-pulse"></div>
-                <div className="relative w-2 h-2 bg-emerald-500 rounded-full border border-white shadow-sm"></div>
-              </div>
-              <div className="flex flex-col">
-                <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.4em] leading-none mb-1.5">Engineering by</p>
-                <p className="text-[13px] font-black text-slate-900 tracking-tight leading-none uppercase italic">
-                  S&S <span className="text-blue-600 font-black">Developments</span>
-                </p>
-              </div>
-            </div>
-            
+                        
             <div className="flex items-center gap-10">
               <p className="hidden md:block text-[9px] text-slate-400 font-black uppercase tracking-[0.3em] opacity-40">
-                © {new Date().getFullYear()} Fundación Valores • Gestión Integral de Salud
+                © {new Date().getFullYear()} Fundación Valores Para Mi Ciudad • Gestión Integral de Salud
               </p>
             </div>
           </footer>
         </main>
       </div>
+
+      <AnimatePresence>
+        {showUpcomingModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowUpcomingModal(false)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-sm bg-white rounded-[3rem] p-10 shadow-2xl overflow-hidden text-center"
+            >
+              <div className="absolute top-0 right-0 p-6">
+                <button 
+                  onClick={() => setShowUpcomingModal(false)}
+                  className="p-3 bg-slate-50 text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-2xl transition-all"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="w-20 h-20 bg-blue-50/50 rounded-[2rem] flex items-center justify-center text-blue-500 mx-auto mb-8 relative">
+                <div className="absolute inset-0 bg-blue-400 rounded-[2rem] blur-xl opacity-20"></div>
+                <svg className="w-8 h-8 relative z-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight leading-tight mb-4">
+                Próximamente
+              </h2>
+              
+              <div className="h-1 w-12 bg-blue-600 mx-auto rounded-full mb-6" />
+
+              <p className="text-slate-500 font-medium leading-relaxed mb-10">
+                Muy pronto podrás conocer más sobre nuestro trabajo y soluciones tecnológicas.
+              </p>
+
+              <button 
+                onClick={() => setShowUpcomingModal(false)}
+                className="w-full py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200"
+              >
+                Entendido
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {showSupportModal && (
@@ -585,6 +680,55 @@ function AppContent() {
               {/* Aesthetic background elements */}
               <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-blue-50 rounded-full blur-3xl opacity-50" />
               <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-50 rounded-full blur-3xl opacity-50" />
+            </motion.div>
+          </div>
+        )}
+
+        {showMapModal && (
+          <div className="fixed z-[100] inset-0 flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowMapModal(false)}
+              className="absolute inset-0 bg-slate-900/60 backdrop-blur-md"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-5xl bg-white rounded-[3rem] p-4 sm:p-6 shadow-2xl overflow-hidden flex flex-col items-center"
+            >
+              <div className="absolute top-0 right-0 p-6 z-10">
+                <button 
+                  onClick={() => setShowMapModal(false)}
+                  className="p-3 bg-white/80 backdrop-blur-md text-slate-800 hover:text-slate-900 hover:bg-white rounded-2xl shadow-sm border border-slate-200 transition-all"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="w-full aspect-video relative rounded-[2rem] overflow-hidden bg-slate-100 border border-slate-200 flex items-center justify-center">
+                <img 
+                  src="/mapa.jpg?v=3" 
+                  alt="Taruca Pampa 2026 - Equipo de Salud" 
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = 'https://placehold.co/1200x800/e2e8f0/64748b?text=Sube+la+imagen+en+la+carpeta+public+con+el+nombre+mapa.jpg';
+                  }}
+                />
+              </div>
+              <div className="mt-6 w-full flex items-center justify-between px-4">
+                 <div>
+                    <h3 className="text-xl font-black text-slate-800 tracking-tight">Taruca Pampa 2026</h3>
+                    <p className="text-sm font-bold text-slate-400">Equipo de Salud - Fundación Valores Para Mi Ciudad</p>
+                 </div>
+                 <button 
+                    onClick={() => setShowMapModal(false)}
+                    className="px-6 py-3 bg-slate-100 text-slate-600 rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Cerrar
+                  </button>
+              </div>
             </motion.div>
           </div>
         )}

@@ -84,9 +84,13 @@ export default function UserManagement() {
               <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">
-                    <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                      <UserCircle className="h-5 w-5" />
-                    </div>
+                    {u.photoURL ? (
+                      <img src={u.photoURL} alt={u.name} className="h-8 w-8 rounded-full border border-slate-200 object-cover shadow-sm bg-white" referrerPolicy="no-referrer" />
+                    ) : (
+                      <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200 shadow-sm">
+                        <UserCircle className="h-5 w-5" />
+                      </div>
+                    )}
                     <span className="font-bold text-slate-700">{u.name}</span>
                   </div>
                 </td>
