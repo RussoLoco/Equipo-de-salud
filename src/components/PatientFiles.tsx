@@ -115,16 +115,6 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
 
       await addDoc(collection(db, `patients/${patientId}/files`), fileData);
 
-      // Registrar log global de uso de almacenamiento
-      await addDoc(collection(db, 'system_file_logs'), {
-        fileName: file.name,
-        size: finalSize,
-        patientId: patientId,
-        uploadedBy: profile.uid,
-        uploaderName: profile.name,
-        uploadDate: new Date().toISOString()
-      });
-
     } catch (err) {
       console.error("Error uploading/compressing file:", err);
       alert("Hubo un error al procesar el archivo.");

@@ -153,23 +153,34 @@ export default function AdminHistory() {
       setStockOutLog(stockLog as any);
     }, (err) => handleFirestoreError(err, OperationType.LIST, 'orders'));
 
-    // 2. Fetch Patients
+    // 2. Fetch Patients & their files
     const qPatients = query(collection(db, 'patients'), orderBy('name', 'asc'), limit(100));
-    const unsubPatients = onSnapshot(qPatients, (snap) => {
-      setPatients(snap.docs.map(d => ({ ...d.data() as Patient, id: d.id })));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'patients'));
+    const unsubPatients = onSnapshot(qPatients, async (snap) => {
+      const pats = snap.docs.map(d => ({ ...d.data() as Patient, id: d.id }));
+      setPatients(pats);
 
-    // 3. Fetch File Logs
-    const qFileLogs = query(collection(db, 'system_file_logs'), orderBy('uploadDate', 'desc'), limit(100));
-    const unsubFileLogs = onSnapshot(qFileLogs, (snap) => {
-      setFileLogs(snap.docs.map(d => ({ id: d.id, ...d.data() as any })));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'system_file_logs'));
+      // Async fetch all files for these patients directly from source of truth
+      try {
+        const filePromises = pats.map(p => getDocs(collection(db, `patients/${p.id}/files`)));
+        const fileSnaps = await Promise.all(filePromises);
+        
+        let allFiles: any[] = [];
+        fileSnaps.forEach(s => {
+          allFiles.push(...s.docs.map(d => ({ id: d.id, ...d.data() })));
+        });
+        
+        // Sort by date desc
+        allFiles.sort((a,b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
+        setFileLogs(allFiles);
+      } catch (err) {
+        console.error("Could not load internal files", err);
+      }
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'patients'));
 
     setLoading(false);
     return () => {
       unsubOrders();
       unsubPatients();
-      unsubFileLogs();
     };
   }, []);
 
