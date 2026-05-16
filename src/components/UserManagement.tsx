@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { collection, query, onSnapshot, doc, updateDoc, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { UserProfile, UserRole } from '../types';
 import { useAuth } from './AuthProvider';
-import { Users, Shield, UserCircle, Loader2, Check } from 'lucide-react';
+import { Users, Shield, UserCircle, Loader2, Check, Filter } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function UserManagement() {
@@ -11,6 +11,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingUid, setUpdatingUid] = useState<string | null>(null);
+  const [roleFilter, setRoleFilter] = useState<UserRole | 'ALL'>('ALL');
 
   const isAdmin = profile?.role === 'admin' || isSuperAdmin;
 
@@ -50,15 +51,61 @@ export default function UserManagement() {
     }
   };
 
+  const getRoleName = (r: string) => {
+    switch(r) {
+      case 'pharmacy': return 'Farmacia';
+      case 'admin': return 'Administrador';
+      case 'admission': return 'Admisión';
+      case 'nurse': return 'Antropometría';
+      case 'nutritionist': return 'Nutrición';
+      case 'ecografista': return 'Ecografía';
+      case 'psiquiatra': return 'Psiquiatría';
+      case 'odontologo': return 'Odontología';
+      case 'PENDIENTE': return 'Pendiente App';
+      default: return 'Médico';
+    }
+  };
+
+  const filteredUsers = useMemo(() => {
+    if (roleFilter === 'ALL') return users;
+    return users.filter(u => u.role === roleFilter);
+  }, [users, roleFilter]);
+
+  const roleCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    users.forEach(u => {
+      counts[u.role] = (counts[u.role] || 0) + 1;
+    });
+    return counts;
+  }, [users]);
+
   if (!isAdmin) return null;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
-      <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center gap-3">
-        <Users className="h-5 w-5 text-blue-600" />
-        <div>
-          <h3 className="text-sm font-bold text-slate-800">Control de Accesos</h3>
-          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Asignación de roles y permisos</p>
+      <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Users className="h-5 w-5 text-blue-600" />
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">Control de Accesos</h3>
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Asignación de roles y permisos</p>
+          </div>
+        </div>
+        
+        <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 shadow-sm focus-within:ring-2 focus-within:ring-blue-100 focus-within:border-blue-300 transition-all">
+          <Filter className="h-4 w-4 text-slate-400" />
+          <select
+            value={roleFilter}
+            onChange={(e) => setRoleFilter(e.target.value as UserRole | 'ALL')}
+            className="text-xs font-bold text-slate-700 bg-transparent border-none outline-none focus:ring-0 cursor-pointer min-w-[180px]"
+          >
+            <option value="ALL">Todos los Usuarios ({users.length})</option>
+            {Object.entries(roleCounts).map(([role, count]) => (
+              <option key={role} value={role}>
+                {getRoleName(role)} ({count})
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -80,7 +127,13 @@ export default function UserManagement() {
                   Cargando usuarios...
                 </td>
               </tr>
-            ) : users.map((u) => (
+            ) : filteredUsers.length === 0 ? (
+              <tr>
+                <td colSpan={4} className="py-12 text-center text-slate-400 font-medium">
+                  No hay usuarios con este rol.
+                </td>
+              </tr>
+            ) : filteredUsers.map((u) => (
               <tr key={u.uid} className="hover:bg-slate-50/50 transition-colors">
                 <td className="px-6 py-4">
                   <div className="flex items-center gap-3">

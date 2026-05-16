@@ -40,7 +40,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const docSnap = await getDoc(docRef);
           
           if (docSnap.exists()) {
-            setProfile(docSnap.data() as UserProfile);
+            const data = docSnap.data() as UserProfile;
+            setProfile(data);
+            
+            // Set online status
+            await setDoc(docRef, { status: 'online', lastActiveAt: new Date().toISOString() }, { merge: true });
           } else {
             const isSuper = user.email === superAdminEmail;
             const defaultRole = isSuper ? 'admin' : 'PENDIENTE';
@@ -53,7 +57,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               role: defaultRole as any,
               phone: '',
               isPending: !isSuper,
-              profileCompleted: false
+              profileCompleted: false,
+              status: 'online',
+              lastActiveAt: new Date().toISOString()
             };
             await setDoc(docRef, newProfile);
             setProfile(newProfile);
@@ -70,6 +76,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     return () => unsub();
   }, []);
+
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const docRef = doc(db, 'users', user.uid);
+    let heartbeatInterval: any;
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        setDoc(docRef, { status: 'offline', lastActiveAt: new Date().toISOString() }, { merge: true });
+      } else {
+        setDoc(docRef, { status: 'online', lastActiveAt: new Date().toISOString() }, { merge: true });
+      }
+    };
+
+    const handleBeforeUnload = () => {
+      setDoc(docRef, { status: 'offline', lastActiveAt: new Date().toISOString() }, { merge: true });
+    };
+
+    // Heartbeat every 5 minutes
+    heartbeatInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        setDoc(docRef, { status: 'online', lastActiveAt: new Date().toISOString() }, { merge: true });
+      }
+    }, 5 * 60 * 1000);
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      clearInterval(heartbeatInterval);
+      setDoc(docRef, { status: 'offline', lastActiveAt: new Date().toISOString() }, { merge: true });
+    };
+  }, [user, profile?.uid]);
 
   const [authError, setAuthError] = useState<string | null>(null);
 

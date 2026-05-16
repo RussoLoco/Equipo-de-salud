@@ -118,6 +118,12 @@ service cloud.firestore {
         allow update: if isSuper() || (isStaff() && isValidVisit(incoming()));
         allow delete: if isAdmin();
       }
+
+      match /files/{fileId} {
+        allow read: if isSignedIn() && isStaff();
+        allow create: if isSignedIn() && (isDoctor() || isSpecialist() || isNutritionist() || isAdmin());
+        allow delete: if isAdmin();
+      }
     }
 
     match /visits/{visitId} {

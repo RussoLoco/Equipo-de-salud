@@ -10,6 +10,8 @@ export interface UserProfile {
   phone?: string;
   isPending?: boolean;
   profileCompleted?: boolean;
+  lastActiveAt?: string;
+  status?: 'online' | 'offline';
 }
 
 export interface Medicine {
@@ -59,6 +61,19 @@ export interface MedicalEvolution {
   doctorName: string;
   doctorId: string;
   doctorPhoto?: string;
+}
+
+export interface PatientFile {
+  id: string;
+  patientId: string;
+  fileName: string;
+  fileType: string;
+  fileUrl: string; // From Firebase Storage
+  uploadedBy: string; // UID of uploader
+  uploaderName: string;
+  uploaderRole: string;
+  uploadDate: string;
+  size?: number;
 }
 
 export interface PatientVisit {

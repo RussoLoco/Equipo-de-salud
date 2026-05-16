@@ -8,6 +8,7 @@ import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import Inventory from './Inventory';
+import PatientFiles from './PatientFiles';
 
 export default function MedicalConsultation() {
   const { profile } = useAuth();
@@ -956,6 +957,14 @@ export default function MedicalConsultation() {
                   </div>
                 )}
               </div>
+
+              {/* Patient Files */}
+              {selectedVisit && (
+                <div className="bg-white border border-slate-200 rounded-[3rem] p-8 pb-10 shadow-sm relative overflow-hidden group">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-400 to-indigo-500 opacity-50" />
+                  <PatientFiles patientId={selectedVisit.patientId} />
+                </div>
+              )}
 
               {/* Medical Input */}
               <div className="space-y-6">

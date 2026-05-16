@@ -284,6 +284,55 @@ export default function AdminPanel() {
     // Wait, the rules allow reading `visits` at the root and under patients.
   };
 
+  const handleClinicalWipe = async () => {
+    triggerConfirm(
+      '¿PURGAR HISTORIAL CLÍNICO Y PACIENTES?',
+      'Se borrará TODO: Cola de pedidos pendientes, Historial Operativo, Pacientes, Historias Clínicas y Archivos. NO se tocará el stock de medicamentos.',
+      async () => {
+        setError(null);
+        setSuccess(false);
+        setLoading(true);
+        try {
+          const ordCount = await performWipeOrders();
+          const visCount = await performWipeVisits();
+          
+          let patCount = 0;
+          while (true) {
+            const patSnap = await getDocsFromServer(query(collection(db, 'patients'), limit(100)));
+            if (patSnap.empty) break;
+            for (const docSnap of patSnap.docs) {
+              // Delete visits subcollection
+              const visitsSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'visits'));
+              const vBatch = writeBatch(db);
+              visitsSnap.docs.forEach(v => vBatch.delete(v.ref));
+              await vBatch.commit();
+              
+              // Delete files subcollection
+              const filesSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'files'));
+              const fBatch = writeBatch(db);
+              filesSnap.docs.forEach(f => fBatch.delete(f.ref));
+              await fBatch.commit();
+
+              await deleteDoc(docSnap.ref);
+              patCount++;
+            }
+          }
+          setTotalPacientes(0);
+          
+          await refreshStats();
+          setSuccess(true);
+          setSuccessMsg(`Base de datos clínica vaciada con éxito. Pacientes: ${patCount}, Visitas: ${visCount}, Pedidos: ${ordCount}`);
+          setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 8000);
+        } catch (err) {
+          setError('Error durante la purga clínica.');
+          handleFirestoreError(err, OperationType.DELETE, 'global_purge');
+        } finally {
+          setLoading(false);
+        }
+      }
+    );
+  };
+
   const handleTotalWipe = async () => {
     triggerConfirm(
       '¿PURGAR TODA LA BASE DE DATOS (Excepto Usuarios)?',
@@ -297,7 +346,7 @@ export default function AdminPanel() {
           const ordCount = await performWipeOrders();
           const visCount = await performWipeVisits();
           
-          // Delete patients and their visits subcollection
+          // Delete patients and their visits & files subcollections
           let patCount = 0;
           while (true) {
             const patSnap = await getDocsFromServer(query(collection(db, 'patients'), limit(100)));
@@ -307,6 +356,12 @@ export default function AdminPanel() {
               const vBatch = writeBatch(db);
               visitsSnap.docs.forEach(v => vBatch.delete(v.ref));
               await vBatch.commit();
+              
+              const filesSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'files'));
+              const fBatch = writeBatch(db);
+              filesSnap.docs.forEach(f => fBatch.delete(f.ref));
+              await fBatch.commit();
+
               await deleteDoc(docSnap.ref);
               patCount++;
             }
@@ -764,12 +819,12 @@ export default function AdminPanel() {
               <div className="p-8 rounded-[2rem] border border-slate-200 bg-slate-50/30 space-y-6 hover:bg-slate-100/40 transition-colors">
                 <div className="flex items-center gap-4 text-slate-800">
                   <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-slate-100">
-                    <FileText className="h-6 w-6" />
+                    <Activity className="h-6 w-6" />
                   </div>
-                  <h3 className="text-sm font-black uppercase tracking-widest">Historial Operativo</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Órdenes y Pedidos</h3>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed font-medium">
-                  Limpia el registro de auditoría y pedidos entregados. Utilícelo para archivar reportes y comenzar un nuevo período fiscal.
+                  Vacía la cola de pedidos pendientes de farmacia y limpia el registro de auditoría de entregados.
                 </p>
                 <div className="pt-2">
                   <button
@@ -778,29 +833,29 @@ export default function AdminPanel() {
                     className="w-full flex items-center justify-center gap-3 px-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-white text-slate-700 border border-slate-200 hover:bg-slate-900 hover:text-white transition-all shadow-xl shadow-slate-200 disabled:opacity-50"
                   >
                     {isWipingOrders ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                    Depurar Historial
+                    Vaciar Cola de Pedidos
                   </button>
                 </div>
               </div>
 
-              <div className="p-8 rounded-[2rem] border border-blue-100 bg-blue-50/20 space-y-6 hover:bg-blue-50/40 transition-colors md:col-span-2">
-                <div className="flex items-center gap-4 text-blue-700">
-                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-blue-100">
+              <div className="p-8 rounded-[2rem] border border-indigo-100 bg-indigo-50/20 space-y-6 hover:bg-indigo-50/40 transition-colors md:col-span-2">
+                <div className="flex items-center gap-4 text-indigo-700">
+                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg shadow-indigo-100">
                     <Users className="h-6 w-6" />
                   </div>
-                  <h3 className="text-sm font-black uppercase tracking-widest">Gestión de Pacientes</h3>
+                  <h3 className="text-sm font-black uppercase tracking-widest">Gestión de Pacientes e Historia Clínica</h3>
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed font-medium max-w-2xl">
-                  ADVERTENCIA: La eliminación de beneficiarios también eliminará sus antecedentes clínicos vinculados y visitas históricas. Asegúrese de realizar un backup antes de proceder.
+                  ADVERTENCIA: Purga toda la base de datos de pacientes, historias clínicas, archivos e imágenes adjuntas. También limpia la cola de pedidos pendientes y los historiales. NO afecta el inventario de medicamentos.
                 </p>
                 <div className="pt-2">
                   <button
-                    onClick={handleWipePatients}
+                    onClick={handleClinicalWipe}
                     disabled={loading}
-                    className="flex items-center gap-3 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-white text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white transition-all shadow-xl shadow-blue-100 disabled:opacity-50"
+                    className="flex items-center gap-3 px-10 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-indigo-600 text-white border border-indigo-700 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-200 disabled:opacity-50"
                   >
-                    <Trash2 className="h-4 w-4" />
-                    Vaciar Padron de Pacientes
+                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
+                    Purgar Base Clínica
                   </button>
                 </div>
               </div>
