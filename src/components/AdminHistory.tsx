@@ -23,7 +23,7 @@ import { es } from 'date-fns/locale';
 import { cn } from '../lib/utils';
 
 export default function AdminHistory() {
-  const [activeTab, setActiveTab] = useState<'prescriptions' | 'patients' | 'stock'>('prescriptions');
+  const [activeTab, setActiveTab] = useState<'prescriptions' | 'patients' | 'stock' | 'files'>('prescriptions');
   const [searchTerm, setSearchTerm] = useState('');
   
   // Data States
@@ -38,6 +38,15 @@ export default function AdminHistory() {
     doctorName: string;
   }[]>([]);
   
+  const [fileLogs, setFileLogs] = useState<{
+    id: string;
+    fileName: string;
+    size: number;
+    uploaderName: string;
+    uploadDate: string;
+    patientId: string;
+  }[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deletingPatientId, setDeletingPatientId] = useState<string | null>(null);
@@ -142,18 +151,25 @@ export default function AdminHistory() {
           date: o.deliveredAt || o.date
         })));
       setStockOutLog(stockLog as any);
-    });
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'orders'));
 
     // 2. Fetch Patients
     const qPatients = query(collection(db, 'patients'), orderBy('name', 'asc'), limit(100));
     const unsubPatients = onSnapshot(qPatients, (snap) => {
       setPatients(snap.docs.map(d => ({ ...d.data() as Patient, id: d.id })));
-    });
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'patients'));
+
+    // 3. Fetch File Logs
+    const qFileLogs = query(collection(db, 'system_file_logs'), orderBy('uploadDate', 'desc'), limit(100));
+    const unsubFileLogs = onSnapshot(qFileLogs, (snap) => {
+      setFileLogs(snap.docs.map(d => ({ id: d.id, ...d.data() as any })));
+    }, (err) => handleFirestoreError(err, OperationType.LIST, 'system_file_logs'));
 
     setLoading(false);
     return () => {
       unsubOrders();
       unsubPatients();
+      unsubFileLogs();
     };
   }, []);
 
@@ -171,6 +187,11 @@ export default function AdminHistory() {
   const filteredStock = stockOutLog.filter(s => 
     s.drugName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     s.patientName.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const filteredFiles = fileLogs.filter(f => 
+    f.fileName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    f.uploaderName.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -207,6 +228,16 @@ export default function AdminHistory() {
           >
             <TrendingDown className="h-3.5 w-3.5" />
             Stock Saliente
+          </button>
+          <button 
+            onClick={() => setActiveTab('files')}
+            className={cn(
+              "flex items-center gap-2 px-6 py-3 rounded-2xl text-[10px] font-black uppercase tracking-[0.15em] transition-all",
+              activeTab === 'files' ? "bg-white text-blue-600 shadow-md ring-1 ring-slate-200" : "text-slate-400 hover:text-slate-600"
+            )}
+          >
+            <Download className="h-3.5 w-3.5" />
+            Archivos ({fileLogs.length})
           </button>
         </div>
 
@@ -427,6 +458,68 @@ export default function AdminHistory() {
               <div className="p-20 text-center">
                 <TrendingDown className="h-12 w-12 text-slate-200 mx-auto mb-4" />
                 <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No se registran salidas de stock aún</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Archivos (Upload history limit UI) */}
+        {activeTab === 'files' && (
+          <div className="bg-white border border-slate-200 rounded-[2.5rem] overflow-hidden shadow-sm">
+            <div className="p-8 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-black text-slate-900 tracking-tight">Registro de Archivos</h3>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1 text-orange-500">
+                  Total Archivos: {fileLogs.length} | Límite Aproximado (Firestore Tier): ~1,200
+                </p>
+              </div>
+            </div>
+            
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50/50">
+                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Fecha</th>
+                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Archivo</th>
+                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso / Disp.</th>
+                    <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Profesional</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredFiles.map((log) => {
+                    const mbSize = (log.size / (1024 * 1024)).toFixed(2);
+                    return (
+                      <tr key={log.id} className="group border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+                        <td className="px-8 py-5 text-[10px] font-bold text-slate-500">
+                          {format(new Date(log.uploadDate), 'dd/MM HH:mm', { locale: es })}
+                        </td>
+                        <td className="px-8 py-5">
+                          <span className="text-xs font-black text-slate-800">{log.fileName}</span>
+                        </td>
+                        <td className="px-8 py-5">
+                          <span className="inline-flex items-center justify-center min-w-[3.5rem] h-8 bg-orange-50 text-orange-600 rounded-xl text-[10px] font-black border border-orange-100">
+                            {mbSize} MB
+                          </span>
+                        </td>
+                        <td className="px-8 py-5">
+                          <div className="flex items-center gap-2">
+                             <div className="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center text-slate-400">
+                               <User className="h-3 w-3" />
+                             </div>
+                             <span className="text-[10px] font-bold text-slate-500">{log.uploaderName}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredFiles.length === 0 && (
+              <div className="p-20 text-center">
+                <Download className="h-12 w-12 text-slate-200 mx-auto mb-4" />
+                <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">No hay archivos registrados globalmente todavía.</p>
               </div>
             )}
           </div>

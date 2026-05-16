@@ -95,6 +95,12 @@ service cloud.firestore {
       allow delete: if isAdmin() || isSuper();
     }
     
+    match /system_file_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && isStaff();
+      allow delete: if isAdmin();
+    }
+    
     match /uploads_history/{uploadId} {
       allow read: if isAdmin();
       allow create: if isAdmin();
