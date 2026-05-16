@@ -16,8 +16,7 @@ export default function ConnectedUsers() {
     const q = query(collection(db, 'users'), where('status', '==', 'online'));
     
     const unsub = onSnapshot(q, (snap) => {
-      const users = snap.docs.map(doc => doc.data() as UserProfile)
-        .filter(u => u.uid !== profile?.uid); // Excluir al usuario actual de la lista para no verse a sí mismo
+      const users = snap.docs.map(doc => doc.data() as UserProfile);
       setOnlineUsers(users);
     });
 
@@ -77,7 +76,7 @@ export default function ConnectedUsers() {
             <div className="max-h-64 overflow-y-auto space-y-1 mt-1 pr-1 custom-scrollbar">
               {onlineUsers.length === 0 ? (
                 <div className="p-4 text-center">
-                  <p className="text-xs text-slate-500 font-medium">No hay otros usuarios en línea.</p>
+                  <p className="text-xs text-slate-500 font-medium">No hay usuarios en línea.</p>
                 </div>
               ) : (
                 onlineUsers.map(u => (
