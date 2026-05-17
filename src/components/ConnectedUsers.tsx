@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { UserProfile } from '../types';
 import { Users, User, Circle } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -12,15 +11,37 @@ export default function ConnectedUsers() {
   const { profile } = useAuth();
 
   useEffect(() => {
-    // Escuchar a los usuarios que tengan status='online'
-    const q = query(collection(db, 'users'), where('status', '==', 'online'));
-    
-    const unsub = onSnapshot(q, (snap) => {
-      const users = snap.docs.map(doc => doc.data() as UserProfile);
-      setOnlineUsers(users);
-    });
+    let subscription: any;
 
-    return () => unsub();
+    const fetchOnlineUsers = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('status', 'online');
+      
+      if (!error && data) {
+        const users = (data as UserProfile[]).filter(u => {
+          const r = (u.role || '').toLowerCase();
+          return r !== 'pendiente' && r !== 'waiting' && r !== 'receso';
+        });
+        setOnlineUsers(users);
+      }
+    };
+
+    fetchOnlineUsers();
+
+    subscription = supabase
+      .channel('public:users:online')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
+        fetchOnlineUsers();
+      })
+      .subscribe();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
   }, [profile?.uid]);
 
   const getRoleName = (r: string) => {

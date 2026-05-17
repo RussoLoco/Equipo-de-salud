@@ -78,14 +78,21 @@ function AppContent() {
   if (!profile) return null;
 
   // If user is pending, show access restricted message
-  if (profile.isPending && profile.role === 'PENDIENTE') {
+  if (profile.isPending && profile.role === 'PENDIENTE' || profile.role === 'receso' || activeRole === 'receso') {
+    const isReceso = profile.role === 'receso' || activeRole === 'receso';
     return (
       <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50 p-6 text-center">
-        <div className="w-20 h-20 bg-amber-100 rounded-[2rem] flex items-center justify-center text-amber-600 mb-6 border border-amber-200 shadow-xl shadow-amber-100">
+        <div className={cn("w-20 h-20 rounded-[2rem] flex items-center justify-center mb-6 border shadow-xl", isReceso ? "bg-blue-100 text-blue-600 border-blue-200 shadow-blue-100" : "bg-amber-100 text-amber-600 border-amber-200 shadow-amber-100")}>
           <ShieldAlert className="h-10 w-10" />
         </div>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-2">Acceso Restringido</h1>
-        <p className="text-slate-500 font-medium max-w-sm mb-8 leading-relaxed">Tu solicitud de rol ha sido enviada al Administrador. Serás notificado cuando tu cuenta sea activada.</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight mb-2">
+          {isReceso ? 'Receso Temporal' : 'Acceso Restringido'}
+        </h1>
+        <p className="text-slate-500 font-medium max-w-sm mb-8 leading-relaxed">
+          {isReceso 
+            ? 'Muchas gracias Por Estar en el Equipo de Salud Temporalmente estas en un receso y cuando sea el momento se te asignara tu respectivo rol, Ten paciencia.'
+            : 'Tu solicitud de rol ha sido enviada al Administrador. Serás notificado cuando tu cuenta sea activada.'}
+        </p>
         <button 
           onClick={signOut}
           className="px-8 py-4 bg-slate-900 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center gap-2"

@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, getDocs, writeBatch, limit, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { PatientVisit, MedicalEvolution, Medicine, OrderItem, Order } from '../types';
 import { useAuth } from './AuthProvider';
 import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, Search, X, ShoppingCart, Plus, Trash2, Package, History, AlertCircle, ChevronDown, ChevronUp, Calendar, MapPin } from 'lucide-react';
@@ -70,27 +69,41 @@ export default function MedicalConsultation() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const timeLimit = today.toISOString();
-
-    const q = query(
-      collection(db, 'visits'), 
-      where('status', 'in', ['espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'])
-    );
     
-    const unsub = onSnapshot(q, (snap) => {
+    let sub: any;
+
+    const fetchVisits = async () => {
       const allowedRoles = profile?.role === 'nutritionist' ? ['nutrición'] :
                            profile?.role === 'ecografista' ? ['ecografía'] :
                            profile?.role === 'psiquiatra' ? ['psiquiatría'] :
                            profile?.role === 'odontologo' ? ['odontología'] :
                            ['clínico', 'pediatría'];
 
-      const docs = snap.docs.map(d => d.data() as PatientVisit)
-        .filter(v => v.date >= timeLimit && (v.serviceType ? allowedRoles.includes(v.serviceType) : true));
-      // Ordenamos por fecha de llegada
-      const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPendingVisits(sorted);
+      const { data } = await supabase.from('patient_visits')
+        .select('*')
+        .in('status', ['espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'])
+        .gte('date', timeLimit);
+
+      if (data) {
+        const docs = (data as PatientVisit[])
+          .filter(v => (v.serviceType ? allowedRoles.includes(v.serviceType) : true));
+        // Ordenamos por fecha de llegada
+        const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        setPendingVisits(sorted);
+      }
       setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits'));
-    return () => unsub();
+    };
+
+    fetchVisits();
+
+    sub = supabase.channel('public:patient_visits:medical')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, () => {
+        fetchVisits();
+      }).subscribe();
+
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, []);
 
   const claimVisit = async (visit: PatientVisit) => {
@@ -110,6 +123,14 @@ export default function MedicalConsultation() {
 
     setIsSubmitting(true);
     try {
+      const { data, error } = await supabase.from('patient_visits').select('*').eq('id', visit.id).single();
+      if (error) throw error;
+      
+      const currentData = data as PatientVisit;
+      if (currentData.status === 'atendiendo' && currentData.attendingDoctorId !== profile.uid) {
+        throw new Error(`Esta consulta ya está siendo atendida por el Dr/a. ${currentData.attendingDoctorName || 'otro profesional'}.`);
+      }
+
       const visitUpdate = {
         status: 'atendiendo',
         attendingDoctorId: profile.uid,
@@ -117,14 +138,12 @@ export default function MedicalConsultation() {
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', visit.id), visitUpdate);
-      batch.update(doc(db, `patients/${visit.patientId}/visits`, visit.id), visitUpdate);
+      const { error: updateError } = await supabase.from('patient_visits').update(visitUpdate).eq('id', visit.id);
+      if (updateError) throw updateError;
 
-      await batch.commit();
-      setSelectedVisit({ ...visit, ...visitUpdate });
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `patients/${visit.patientId}/visits/${visit.id} (and root)`);
+      setSelectedVisit({ ...visit, ...visitUpdate } as PatientVisit);
+    } catch (err: any) {
+      console.warn(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -146,22 +165,15 @@ export default function MedicalConsultation() {
         o2Saturation: biometricsForm.o2Saturation,
       };
 
-      const batch = writeBatch(db);
-      
-      // Update global patient record
-      batch.set(doc(db, 'patients', selectedVisit.patientId), {
+      await supabase.from('patients').update({
         vitals: newVitals,
         updatedAt: new Date().toISOString()
-      }, { merge: true });
+      }).eq('id', selectedVisit.patientId);
 
-      // Fetch all visits for this patient and update them
-      const visitsSnap = await getDocs(collection(db, `patients/${selectedVisit.patientId}/visits`));
-      visitsSnap.forEach(vDoc => {
-        batch.set(vDoc.ref, { vitals: newVitals, updatedAt: new Date().toISOString() }, { merge: true });
-        batch.set(doc(db, 'visits', vDoc.id), { vitals: newVitals, updatedAt: new Date().toISOString() }, { merge: true });
-      });
-
-      await batch.commit();
+      await supabase.from('patient_visits').update({ 
+        vitals: newVitals, 
+        updatedAt: new Date().toISOString() 
+      }).eq('patientId', selectedVisit.patientId);
 
       setSelectedVisit({ ...selectedVisit, vitals: newVitals as any });
       setIsEditingBiometrics(false);
@@ -194,16 +206,13 @@ export default function MedicalConsultation() {
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
-      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
+      await supabase.from('patient_visits').update(visitUpdate).eq('id', selectedVisit.id);
 
-      await batch.commit();
       setSelectedVisit(null);
       setAntecedents('');
       setEvolutionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `release/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -212,24 +221,35 @@ export default function MedicalConsultation() {
   useEffect(() => {
     if (selectedVisit) {
       // Fetch permanent clinical history from patients collection
-      getDoc(doc(db, 'patients', selectedVisit.patientId)).then(snap => {
-        if (snap.exists()) {
-          setPermanentHistory(snap.data().clinicalHistory || '');
+      supabase.from('patients').select('*').eq('id', selectedVisit.patientId).single().then(({ data }) => {
+        if (data) {
+          setPermanentHistory(data.clinicalHistory || '');
         }
       });
 
-      // Fetch evolutionary history (past visits)
-      const q = query(
-        collection(db, `patients/${selectedVisit.patientId}/visits`),
-        orderBy('date', 'desc'),
-        limit(50)
-      );
-      
-      const unsubscribe = onSnapshot(q, (snap) => {
-        setPatientHistory(snap.docs.map(d => d.data() as PatientVisit).filter(v => v.id !== selectedVisit.id));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, `patients/${selectedVisit.patientId}/visits`));
+      let subHistory: any;
 
-      return () => unsubscribe();
+      const fetchHistory = async () => {
+        const { data } = await supabase.from('patient_visits')
+          .select('*')
+          .eq('patientId', selectedVisit.patientId)
+          .order('date', { ascending: false })
+          .limit(50);
+        
+        if (data) {
+          setPatientHistory((data as PatientVisit[]).filter(v => v.id !== selectedVisit.id));
+        }
+      };
+
+      fetchHistory();
+
+      subHistory = supabase.channel(`public:patient_visits:${selectedVisit.patientId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${selectedVisit.patientId}` }, () => fetchHistory())
+        .subscribe();
+
+      return () => {
+        if (subHistory) supabase.removeChannel(subHistory);
+      };
     } else {
       setPatientHistory([]);
       setShowFullHistory(false);
@@ -239,14 +259,19 @@ export default function MedicalConsultation() {
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     if (peekingPatient) {
-      const q = query(
-        collection(db, `patients/${peekingPatient.id}/visits`),
-        orderBy('date', 'desc'),
-        limit(20)
-      );
-      unsubscribe = onSnapshot(q, (snap) => {
-        setPeekingHistory(snap.docs.map(d => d.data() as PatientVisit).filter(v => v.status === 'atendido'));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, `peeking/${peekingPatient.id}/visits`));
+      const fetchPeeking = async () => {
+        const { data } = await supabase.from('patient_visits')
+          .select('*')
+          .eq('patientId', peekingPatient.id)
+          .order('date', { ascending: false })
+          .limit(20);
+        
+        if (data) {
+          setPeekingHistory((data as PatientVisit[]).filter(v => v.status === 'atendido'));
+        }
+      };
+
+      fetchPeeking();
     } else {
       setPeekingHistory([]);
     }
@@ -257,12 +282,12 @@ export default function MedicalConsultation() {
     if (!selectedVisit) return;
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'patients', selectedVisit.patientId), {
+      await supabase.from('patients').update({
         clinicalHistory: permanentHistory
-      });
+      }).eq('id', selectedVisit.patientId);
       setIsEditingPermanent(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'patients');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -296,16 +321,14 @@ export default function MedicalConsultation() {
 
       const visitUpdate = {
         status: 'atendido',
-        evolution,
+        evolution: evolution as any,
         updatedAt: new Date().toISOString()
       };
-
-      const batch = writeBatch(db);
 
       // Create Order if cart has items
       let orderId: string | null = null;
       if (cart.length > 0) {
-        orderId = doc(collection(db, 'orders')).id;
+        orderId = crypto.randomUUID();
         const isInterconsultation = !!referralService && (referralService === 'odontología' || referralService === 'psiquiatría');
         const orderData: Order = {
           orderId,
@@ -319,26 +342,22 @@ export default function MedicalConsultation() {
           status: isInterconsultation ? 'En_Interconsulta' : 'Pendiente',
           location: 'Consultorio'
         };
-        batch.set(doc(db, 'orders', orderId), orderData);
+        await supabase.from('orders').insert(orderData as any);
       }
 
-      // Update current visit in both locations
-      const mainVisitRef = doc(db, 'visits', selectedVisit.id);
-      const patientVisitRef = doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id);
-      
-      batch.update(mainVisitRef, visitUpdate);
-      batch.update(patientVisitRef, visitUpdate);
+      // Update current visit
+      await supabase.from('patient_visits').update(visitUpdate).eq('id', selectedVisit.id);
 
       // If it's a referral, create a NEW visit for the next service
       if (referralService) {
-        const newVisitId = doc(collection(db, 'visits')).id;
+        const newVisitId = crypto.randomUUID();
         const newVisitData: PatientVisit = {
           id: newVisitId,
           patientId: selectedVisit.patientId,
           patientName: selectedVisit.patientName,
           patientDni: selectedVisit.patientDni,
-          age: selectedVisit.age,
-          location: selectedVisit.location,
+          age: selectedVisit.age || '',
+          location: selectedVisit.location || '',
           category: selectedVisit.category,
           date: new Date().toISOString(),
           status: 'espera',
@@ -349,12 +368,9 @@ export default function MedicalConsultation() {
           updatedAt: new Date().toISOString()
         };
 
-        batch.set(doc(db, 'visits', newVisitId), newVisitData);
-        batch.set(doc(db, `patients/${selectedVisit.patientId}/visits`, newVisitId), newVisitData);
+        await supabase.from('patient_visits').insert(newVisitData as any);
       }
 
-      await batch.commit();
-      
       if (referralService) {
         console.warn(`Consulta guardada y paciente derivado a ${getServiceLabel(referralService)} correctamente.`);
       } else {
@@ -368,7 +384,6 @@ export default function MedicalConsultation() {
       setShowReferralModal(false);
     } catch (err) {
       console.warn(`Error al procesar la consulta: ${err instanceof Error ? err.message : String(err)}`);
-      handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
     } finally {
       setIsSubmitting(false);
       setSubmittingService(null);

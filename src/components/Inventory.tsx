@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { collection, query, onSnapshot, setDoc, serverTimestamp, writeBatch, doc, orderBy, where, getDocs, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Medicine, Order, OrderItem, Patient } from '../types';
 import { useAuth } from './AuthProvider';
 import { 
@@ -83,26 +82,46 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
   }, [editingMed]);
 
   useEffect(() => {
-    // Ensure all items are fetched to prevent local write cache skipping with limits
-    const qInv = query(collection(db, 'inventory'), orderBy('drug', 'asc'));
-    const unsubInv = onSnapshot(qInv, (snapshot) => {
-      setMedicines(snapshot.docs.map(doc => doc.data() as Medicine));
-      setLoading(false);
-    }, (err) => {
-      handleFirestoreError(err, OperationType.GET, 'inventory');
-    });
+    let sub: any;
 
-    return () => unsubInv();
+    const fetchInventory = async () => {
+      const { data } = await supabase.from('inventory').select('*').order('drug', { ascending: true });
+      if (data) {
+        setMedicines(data as Medicine[]);
+      }
+      setLoading(false);
+    };
+
+    fetchInventory();
+
+    sub = supabase.channel('public:inventory')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
+        fetchInventory();
+      }).subscribe();
+
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, []);
 
   useEffect(() => {
+    let sub: any;
     if (isCartOpen) {
-      const q = query(collection(db, 'patients'), orderBy('name'), limit(100));
-      const unsub = onSnapshot(q, (snap) => {
-        setPatients(snap.docs.map(d => d.data() as Patient));
-      });
-      return () => unsub();
+      const fetchPatients = async () => {
+        const { data } = await supabase.from('patients').select('*').order('name', { ascending: true }).limit(100);
+        if (data) setPatients(data as Patient[]);
+      };
+      
+      fetchPatients();
+
+      sub = supabase.channel('public:patients:cart')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+          fetchPatients();
+        }).subscribe();
     }
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, [isCartOpen]);
 
   const handleUpdateMedicine = async (e: React.FormEvent) => {
@@ -110,13 +129,13 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     if (!editingMed) return;
     setIsSubmitting(true);
     try {
-      const drugId = isAddingNew ? editingMed.drugId.trim() : editingMed.drugId;
+      const drugIdRaw = isAddingNew ? editingMed.drugId.trim() : editingMed.drugId;
+      let drugId = drugIdRaw.replace(/[^a-zA-Z0-9_ .+()#\-:]/g, '-');
       
       if (isAddingNew && !drugId) {
         throw new Error('ID de Medicamento es requerido');
       }
 
-      const medicineRef = doc(db, 'inventory', drugId);
 
       // Compose stock string if any helper is filled
       let composedStock = editingMed.stock;
@@ -143,14 +162,12 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
         laboratory: editingMed.laboratory || ''
       };
       
-      const batch = writeBatch(db);
       if (isAddingNew) {
-        batch.set(medicineRef, updateData);
+        await supabase.from('inventory').insert(updateData as any);
       } else {
-        batch.update(medicineRef, updateData);
+        await supabase.from('inventory').update(updateData as any).eq('drugId', drugId);
       }
       
-      await batch.commit();
       setIsEditModalOpen(false);
       setEditingMed(null);
       setIsAddingNew(false);
@@ -159,7 +176,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
       setSearchTerm('');
       setCategoryFilter('All');
     } catch (err) {
-      handleFirestoreError(err, isAddingNew ? OperationType.CREATE : OperationType.UPDATE, 'inventory');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -231,9 +248,9 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
 
     setIsSubmitting(true);
     try {
-      const orderRef = doc(collection(db, 'orders'));
+      const newOrderId = crypto.randomUUID();
       const orderData: Order = {
-        orderId: orderRef.id,
+        orderId: newOrderId,
         date: new Date().toISOString(),
         doctorId: profile.uid,
         doctorName: profile.name,
@@ -242,15 +259,15 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
         patientDni: patient.dni,
         status: 'Pendiente',
         location: profile.role === 'doctor' ? 'Consultorio' : 'Farmacia',
-        items: cart
+        items: cart as any
       };
 
-      await setDoc(orderRef, orderData);
+      await supabase.from('orders').insert(orderData as any);
       setCart([]);
       setIsCartOpen(false);
       setSelectedPatientId('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, 'orders');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -260,13 +277,11 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     if (!medToDelete) return;
     setIsSubmitting(true);
     try {
-      const batch = writeBatch(db);
-      batch.delete(doc(db, 'inventory', medToDelete));
-      await batch.commit();
+      await supabase.from('inventory').delete().eq('drugId', medToDelete);
       setIsDeleteModalOpen(false);
       setMedToDelete(null);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, 'inventory');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }

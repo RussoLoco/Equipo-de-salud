@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { UserProfile, UserRole } from '../types';
 import { useAuth } from './AuthProvider';
 import { Users, Shield, UserCircle, Loader2, Check, Filter } from 'lucide-react';
@@ -18,24 +17,47 @@ export default function UserManagement() {
   useEffect(() => {
     if (!isAdmin) return;
 
-    const q = query(collection(db, 'users'), limit(100));
-    const unsub = onSnapshot(q, (snapshot) => {
-      setUsers(snapshot.docs.map(doc => doc.data() as UserProfile));
-      setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'users'));
+    let subscription: any;
 
-    return () => unsub();
+    const fetchUsers = async () => {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .limit(100);
+      
+      if (!error && data) {
+        setUsers(data as UserProfile[]);
+      }
+      setLoading(false);
+    };
+
+    fetchUsers();
+
+    subscription = supabase
+      .channel('public:users:all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'users' }, (payload) => {
+        fetchUsers();
+      })
+      .subscribe();
+
+    return () => {
+      if (subscription) {
+        supabase.removeChannel(subscription);
+      }
+    };
   }, [isAdmin]);
 
   const changeRole = async (targetUid: string, newRole: UserRole) => {
     setUpdatingUid(targetUid);
     try {
-      await updateDoc(doc(db, 'users', targetUid), {
+      const { error } = await supabase.from('users').update({
         role: newRole,
         isPending: false
-      });
+      }).eq('uid', targetUid);
+
+      if (error) throw error;
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'users/' + targetUid);
+      console.error("Error updating role:", error);
     } finally {
       setUpdatingUid(null);
     }
@@ -43,11 +65,11 @@ export default function UserManagement() {
 
   const updatePhone = async (targetUid: string, newPhone: string) => {
     try {
-      await updateDoc(doc(db, 'users', targetUid), {
+      await supabase.from('users').update({
         phone: newPhone
-      });
+      }).eq('uid', targetUid);
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'users/' + targetUid);
+      console.error("Error updating phone:", error);
     }
   };
 
@@ -61,8 +83,12 @@ export default function UserManagement() {
       case 'ecografista': return 'Ecografía';
       case 'psiquiatra': return 'Psiquiatría';
       case 'odontologo': return 'Odontología';
+      case 'receso': return 'Receso Temporal';
       case 'PENDIENTE': return 'Pendiente App';
-      default: return 'Médico';
+      case 'WAITING': return 'WAITING';
+      default: 
+        if (String(r).toUpperCase() === 'WAITING') return 'WAITING';
+        return 'Médico';
     }
   };
 
@@ -168,7 +194,8 @@ export default function UserManagement() {
                     u.role === 'ecografista' ? "bg-blue-900 text-blue-100 shadow-sm" :
                     u.role === 'psiquiatra' ? "bg-indigo-100 text-indigo-700 shadow-sm" :
                     u.role === 'odontologo' ? "bg-teal-100 text-teal-700 shadow-sm" :
-                    u.role === 'PENDIENTE' ? "bg-red-50 text-red-600 border border-red-100 animate-pulse" :
+                     u.role === 'receso' ? "bg-slate-200 text-slate-700 shadow-sm" :
+                    u.role === 'PENDIENTE' || String(u.role).toUpperCase() === 'WAITING' ? "bg-red-50 text-red-600 border border-red-100 animate-pulse" :
                     "bg-blue-100 text-blue-700 shadow-sm"
                   )}>
                     {u.role === 'pharmacy' ? 'Farmacia' : 
@@ -179,7 +206,8 @@ export default function UserManagement() {
                      u.role === 'ecografista' ? 'Ecografía' :
                      u.role === 'psiquiatra' ? 'Psiquiatría' :
                      u.role === 'odontologo' ? 'Odontología' :
-                     u.role === 'PENDIENTE' ? 'Pendiente App' : 'Médico'}
+                      u.role === 'receso' ? 'Receso Temporal' :
+                     u.role === 'PENDIENTE' || String(u.role).toUpperCase() === 'WAITING' ? (String(u.role).toUpperCase() === 'WAITING' ? 'WAITING' : 'Pendiente App') : 'Médico'}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -199,6 +227,7 @@ export default function UserManagement() {
                       <option value="ecografista">ECOGRAFÍA</option>
                       <option value="psiquiatra">PSIQUIATRÍA</option>
                       <option value="odontologo">ODONTOLOGÍA</option>
+                      <option value="receso">RECESO TEMPORAL</option>
                       <option value="admin">ADMIN</option>
                     </select>
                   </div>

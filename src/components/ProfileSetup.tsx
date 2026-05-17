@@ -1,8 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Save, LogOut, Loader2, User, Phone, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { UserProfile } from '../types';
 import { cn } from '../lib/utils';
 
@@ -70,7 +69,6 @@ export default function ProfileSetup({ profile, onComplete, onSignOut, onCancel 
 
     setLoading(true);
     try {
-      const userRef = doc(db, 'users', profile.uid);
       const updatedData = {
         name: formData.name,
         lastName: formData.lastName,
@@ -79,10 +77,15 @@ export default function ProfileSetup({ profile, onComplete, onSignOut, onCancel 
         profileCompleted: true
       };
 
-      await updateDoc(userRef, updatedData);
+      const { error } = await supabase
+        .from('users')
+        .update(updatedData)
+        .eq('uid', profile.uid);
+
+      if (error) throw error;
       onComplete({ ...profile, ...updatedData });
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'users/' + profile.uid);
+      console.error("Error al actualizar el perfil:", error);
     } finally {
       setLoading(false);
     }

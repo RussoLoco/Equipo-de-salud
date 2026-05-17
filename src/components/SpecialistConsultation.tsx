@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatch, limit, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { PatientVisit, MedicalEvolution, UserRole, OrderItem, Order } from '../types';
 import { useAuth } from './AuthProvider';
 import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, History, X, ChevronDown, ChevronUp, Calendar, FileText, ShoppingCart, Package, Plus } from 'lucide-react';
@@ -52,18 +51,20 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
   useEffect(() => {
     if (selectedVisit && selectedVisit.interconsultationOrderId) {
-      getDoc(doc(db, 'orders', selectedVisit.interconsultationOrderId))
-        .then(snap => {
-          if (snap.exists()) {
-            setExistingOrderItemsState(snap.data().items || []);
+      const fetchOrder = async () => {
+        try {
+          const { data, error } = await supabase.from('orders').select('*').eq('orderId', selectedVisit.interconsultationOrderId).single();
+          if (data && !error) {
+            setExistingOrderItemsState(data.items || []);
           } else {
             setExistingOrderItemsState([]);
           }
-        })
-        .catch(err => {
+        } catch (err) {
           console.error("Error fetching interconsultation order", err);
           setExistingOrderItemsState([]);
-        });
+        }
+      };
+      fetchOrder();
     } else {
       setExistingOrderItemsState([]);
     }
@@ -98,21 +99,33 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const timeLimit = today.toISOString();
-
-    const q = query(
-      collection(db, 'visits'), 
-      where('status', 'in', ['espera', 'atendiendo_especialista'])
-    );
     
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => d.data() as PatientVisit)
-        .filter(v => v.serviceType === myService && v.date >= timeLimit);
-      // Sort by date (timestamp) as requested
-      const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPendingVisits(sorted);
+    let sub: any;
+
+    const fetchVisits = async () => {
+      const { data } = await supabase.from('patient_visits')
+        .select('*')
+        .in('status', ['espera', 'atendiendo_especialista'])
+        .eq('serviceType', myService)
+        .gte('date', timeLimit);
+
+      if (data) {
+        const sorted = (data as PatientVisit[]).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        setPendingVisits(sorted);
+      }
       setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'specialist_visits'));
-    return () => unsub();
+    }
+
+    fetchVisits();
+
+    sub = supabase.channel('public:patient_visits:specialist')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, () => {
+        fetchVisits();
+      }).subscribe();
+
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, [myService]);
 
   const claimVisit = async (visit: PatientVisit) => {
@@ -130,6 +143,14 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
     setIsSubmitting(true);
     try {
+      const { data, error } = await supabase.from('patient_visits').select('*').eq('id', visit.id).single();
+      if (error) throw error;
+      
+      const currentData = data as PatientVisit;
+      if (currentData.status === 'atendiendo_especialista' && currentData.attendingDoctorId !== profile.uid) {
+        throw new Error(`Esta consulta ya está siendo atendida por otro especialista.`);
+      }
+
       const visitUpdate = {
         status: 'atendiendo_especialista',
         attendingDoctorId: profile.uid,
@@ -137,14 +158,12 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', visit.id), visitUpdate);
-      batch.update(doc(db, `patients/${visit.patientId}/visits`, visit.id), visitUpdate);
+      const { error: updateError } = await supabase.from('patient_visits').update(visitUpdate).eq('id', visit.id);
+      if (updateError) throw updateError;
 
-      await batch.commit();
       setSelectedVisit({ ...visit, ...visitUpdate } as PatientVisit);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `patients/${visit.patientId}/visits/${visit.id} (and root)`);
+    } catch (err: any) {
+      console.warn(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -165,16 +184,13 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
-      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
+      await supabase.from('patient_visits').update(visitUpdate).eq('id', selectedVisit.id);
 
-      await batch.commit();
       setSelectedVisit(null);
       setFindings('');
       setEvolutionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `release/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -182,37 +198,52 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
   useEffect(() => {
     if (selectedVisit) {
-      getDoc(doc(db, 'patients', selectedVisit.patientId)).then(snap => {
-        if (snap.exists()) {
-          setPermanentHistory(snap.data().clinicalHistory || '');
+      supabase.from('patients').select('*').eq('id', selectedVisit.patientId).single().then(({ data }) => {
+        if (data) {
+          setPermanentHistory(data.clinicalHistory || '');
         }
       });
 
-      const q = query(
-        collection(db, `patients/${selectedVisit.patientId}/visits`),
-        orderBy('date', 'desc'),
-        limit(50)
-      );
-      
-      const unsubscribe = onSnapshot(q, (snap) => {
-        setPatientHistory(snap.docs.map(d => d.data() as PatientVisit).filter(v => v.id !== selectedVisit.id));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, `patients/${selectedVisit.patientId}/visits`));
+      const fetchHistory = async () => {
+        const { data } = await supabase.from('patient_visits')
+          .select('*')
+          .eq('patientId', selectedVisit.patientId)
+          .order('date', { ascending: false })
+          .limit(50);
+        
+        if (data) {
+          setPatientHistory((data as PatientVisit[]).filter(v => v.id !== selectedVisit.id));
+        }
+      };
 
-      return () => unsubscribe();
+      fetchHistory();
+
+      let sub = supabase.channel(`public:patient_visits:${selectedVisit.patientId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${selectedVisit.patientId}` }, () => fetchHistory())
+        .subscribe();
+
+      return () => {
+         if (sub) supabase.removeChannel(sub);
+      };
     }
   }, [selectedVisit]);
 
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     if (peekingPatient) {
-      const q = query(
-        collection(db, `patients/${peekingPatient.id}/visits`),
-        orderBy('date', 'desc'),
-        limit(20)
-      );
-      unsubscribe = onSnapshot(q, (snap) => {
-        setPeekingHistory(snap.docs.map(d => d.data() as PatientVisit).filter(v => v.status === 'atendido'));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, `peeking/${peekingPatient.id}/visits`));
+      const fetchPeeking = async () => {
+        const { data } = await supabase.from('patient_visits')
+          .select('*')
+          .eq('patientId', peekingPatient.id)
+          .order('date', { ascending: false })
+          .limit(20);
+        
+        if (data) {
+          setPeekingHistory((data as PatientVisit[]).filter(v => v.status === 'atendido'));
+        }
+      };
+
+      fetchPeeking();
     } else {
       setPeekingHistory([]);
     }
@@ -240,7 +271,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
       const visitUpdate = {
         status: 'atendido',
-        evolution,
+        evolution: evolution as any,
         updatedAt: new Date().toISOString()
       };
 
@@ -249,9 +280,9 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
       let previousDoctorName = '';
 
       if (activeOrderId) {
-        const orderSnap = await getDoc(doc(db, 'orders', activeOrderId));
-        if (orderSnap.exists()) {
-          const orderData = orderSnap.data() as Order;
+        const { data } = await supabase.from('orders').select('*').eq('orderId', activeOrderId).single();
+        if (data) {
+          const orderData = data as Order;
           existingOrderItems = orderData.items || [];
           previousDoctorName = orderData.doctorName;
         } else {
@@ -259,24 +290,22 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
         }
       }
 
-      const batch = writeBatch(db);
-
       const combinedItems = [...existingOrderItems, ...cart];
 
       if (combinedItems.length > 0) {
         if (activeOrderId) {
           // Update the existing order to add the new cart items and change status to Pendiente
-          batch.update(doc(db, 'orders', activeOrderId), {
-            items: combinedItems,
+          await supabase.from('orders').update({
+            items: combinedItems as any,
             status: 'Pendiente',
             doctorName: previousDoctorName && previousDoctorName !== profile.name 
                           ? `${previousDoctorName} / ${profile.name}` 
                           : profile.name,
             updatedAt: new Date().toISOString()
-          });
+          }).eq('orderId', activeOrderId);
         } else {
           // Create new order as usual
-          const newOrderId = doc(collection(db, 'orders')).id;
+          const newOrderId = crypto.randomUUID();
           const orderData: Order = {
             orderId: newOrderId,
             date: new Date().toISOString(),
@@ -289,21 +318,18 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
             status: 'Pendiente',
             location: 'Consultorio'
           };
-          batch.set(doc(db, 'orders', newOrderId), orderData);
+          await supabase.from('orders').insert(orderData as any);
         }
       }
 
-      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
-      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
-
-      await batch.commit();
+      await supabase.from('patient_visits').update(visitUpdate).eq('id', selectedVisit.id);
       
       setSelectedVisit(null);
       setFindings('');
       setEvolutionNotes('');
       setCart([]);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }

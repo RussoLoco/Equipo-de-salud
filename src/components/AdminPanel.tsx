@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, doc, writeBatch, getDocs, getDocsFromServer, query, where, orderBy, setDoc, deleteDoc, onSnapshot, limit, getCountFromServer } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Medicine, UploadRecord } from '../types';
 import { Database, Check, AlertCircle, FileText, ArrowRight, Users, Upload, Trash2, Loader2, RefreshCw, Layers, ShieldAlert, ShoppingBag, Activity, User } from 'lucide-react';
 import UserManagement from './UserManagement';
@@ -24,8 +23,8 @@ export default function AdminPanel() {
 
   const fetchHistory = async () => {
     try {
-      const snap = await getDocsFromServer(query(collection(db, 'uploads_history'), orderBy('timestamp', 'desc'), limit(50)));
-      setUploadHistory(snap.docs.map(d => d.data() as UploadRecord));
+      const { data } = await supabase.from('uploads_history').select('*').order('timestamp', { ascending: false }).limit(50);
+      if (data) setUploadHistory(data as UploadRecord[]);
     } catch (e) {
       console.error('Error fetching history', e);
     }
@@ -34,15 +33,15 @@ export default function AdminPanel() {
   const refreshStats = async () => {
     setLoading(true);
     try {
-      // Optimization: Use getCountFromServer to avoid fetching all documents just for counting
-      const invCount = await getCountFromServer(collection(db, 'inventory'));
-      setTotalInventario(invCount.data().count);
+      const [{ count: invCount }, { count: ordCount }, { count: patCount }] = await Promise.all([
+        supabase.from('inventory').select('*', { count: 'exact', head: true }),
+        supabase.from('orders').select('*', { count: 'exact', head: true }),
+        supabase.from('patients').select('*', { count: 'exact', head: true })
+      ]);
       
-      const ordCount = await getCountFromServer(collection(db, 'orders'));
-      setTotalPedidos(ordCount.data().count);
-      
-      const patCount = await getCountFromServer(collection(db, 'patients'));
-      setTotalPacientes(patCount.data().count);
+      setTotalInventario(invCount);
+      setTotalPedidos(ordCount);
+      setTotalPacientes(patCount);
       
       await fetchHistory();
       setSuccess(true);
@@ -59,13 +58,13 @@ export default function AdminPanel() {
     // Initial stats fetch
     refreshStats();
 
-    const qUploads = query(collection(db, 'uploads_history'), orderBy('timestamp', 'desc'), limit(50));
-    const unsubUploads = onSnapshot(qUploads, (snap) => {
-      setUploadHistory(snap.docs.map(d => d.data() as UploadRecord));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'uploads_history'));
+    const sub = supabase.channel('public:uploads_history')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'uploads_history' }, () => {
+        fetchHistory();
+      }).subscribe();
     
     return () => {
-      unsubUploads();
+      supabase.removeChannel(sub);
     };
   }, []);
 
@@ -97,28 +96,11 @@ export default function AdminPanel() {
 
   const performWipeInventory = async () => {
     setIsWiping(true);
-    let totalDeleted = 0;
     try {
       console.log('--- WIPE INVENTORY START ---');
-      while (true) {
-        // Query server directly to avoid cache discrepancies
-        const snap = await getDocsFromServer(query(collection(db, 'inventory'), limit(500)));
-        if (snap.empty) {
-          console.log('Server reports inventory is empty.');
-          break;
-        }
-        
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        
-        totalDeleted += snap.size;
-        console.log(`Deleted ${totalDeleted} inventory records...`);
-        // Emergency break to prevent infinite loops if something goes wrong
-        if (totalDeleted > 20000) break;
-      }
+      await supabase.from('inventory').delete().not('drugId', 'is', null);
       setTotalInventario(0); // Optimistic clear
-      return totalDeleted;
+      return true;
     } catch (err) {
       console.error('Error in performWipeInventory:', err);
       throw err;
@@ -129,26 +111,11 @@ export default function AdminPanel() {
 
   const performWipeOrders = async () => {
     setIsWipingOrders(true);
-    let totalDeleted = 0;
     try {
       console.log('--- WIPE ORDERS START ---');
-      while (true) {
-        const snap = await getDocsFromServer(query(collection(db, 'orders'), limit(500)));
-        if (snap.empty) {
-          console.log('Server reports orders are empty.');
-          break;
-        }
-        
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        
-        totalDeleted += snap.size;
-        console.log(`Deleted ${totalDeleted} order records...`);
-        if (totalDeleted > 20000) break;
-      }
+      await supabase.from('orders').delete().not('orderId', 'is', null);
       setTotalPedidos(0); // Optimistic clear
-      return totalDeleted;
+      return true;
     } catch (err) {
       console.error('Error in performWipeOrders:', err);
       throw err;
@@ -158,22 +125,11 @@ export default function AdminPanel() {
   };
 
   const performWipePatients = async () => {
-    let totalDeleted = 0;
     try {
       console.log('--- WIPE PATIENTS START ---');
-      while (true) {
-        const snap = await getDocsFromServer(query(collection(db, 'patients'), limit(500)));
-        if (snap.empty) break;
-        
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        
-        totalDeleted += snap.size;
-        if (totalDeleted > 20000) break;
-      }
+      await supabase.from('patients').delete().not('id', 'is', null);
       setTotalPacientes(0);
-      return totalDeleted;
+      return true;
     } catch (err) {
       console.error('Error in performWipePatients:', err);
       throw err;
@@ -189,14 +145,14 @@ export default function AdminPanel() {
         setSuccess(false);
         setLoading(true);
         try {
-          const count = await performWipeInventory();
+          await performWipeInventory();
           await refreshStats();
           setSuccess(true);
-          setSuccessMsg(`Inventario vaciado: ${count} registros eliminados.`);
+          setSuccessMsg(`Inventario vaciado con éxito.`);
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 5000);
         } catch (err) {
           setError('Error al vaciar inventario.');
-          handleFirestoreError(err, OperationType.DELETE, 'inventory');
+          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -213,14 +169,14 @@ export default function AdminPanel() {
         setSuccess(false);
         setLoading(true);
         try {
-          const count = await performWipeOrders();
+          await performWipeOrders();
           await refreshStats();
           setSuccess(true);
-          setSuccessMsg(`Historial vaciado: ${count} registros eliminados.`);
+          setSuccessMsg(`Historial vaciado con éxito.`);
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 5000);
         } catch (err) {
           setError('Error al vaciar historial.');
-          handleFirestoreError(err, OperationType.DELETE, 'orders');
+          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -239,11 +195,11 @@ export default function AdminPanel() {
           const count = await performWipePatients();
           await refreshStats();
           setSuccess(true);
-          setSuccessMsg(`Base de datos de pacientes vaciada: ${count} registros eliminados.`);
+          setSuccessMsg(`Base de datos de pacientes vaciada.`);
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 5000);
         } catch (err) {
           setError('Error al borrar pacientes.');
-          handleFirestoreError(err, OperationType.DELETE, 'patients');
+          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -252,25 +208,9 @@ export default function AdminPanel() {
   };
 
   const performWipeVisits = async () => {
-    let totalDeleted = 0;
     try {
-      console.log('--- WIPE VISITS START ---');
-      while (true) {
-        const snap = await getDocsFromServer(query(collection(db, 'visits'), limit(500)));
-        if (snap.empty) break;
-        
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        
-        totalDeleted += snap.size;
-        if (totalDeleted > 20000) break;
-      }
-      return totalDeleted;
-    } catch (err) {
-      console.error('Error in performWipeVisits:', err);
-      throw err;
-    }
+      await supabase.from('patient_visits').delete().not('id', 'is', null);
+    } catch (err) {}
   };
 
   const performWipeAllSubcollectionsOfPatients = async () => {
@@ -293,39 +233,17 @@ export default function AdminPanel() {
         setSuccess(false);
         setLoading(true);
         try {
-          const ordCount = await performWipeOrders();
-          const visCount = await performWipeVisits();
-          
-          let patCount = 0;
-          while (true) {
-            const patSnap = await getDocsFromServer(query(collection(db, 'patients'), limit(100)));
-            if (patSnap.empty) break;
-            for (const docSnap of patSnap.docs) {
-              // Delete visits subcollection
-              const visitsSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'visits'));
-              const vBatch = writeBatch(db);
-              visitsSnap.docs.forEach(v => vBatch.delete(v.ref));
-              await vBatch.commit();
-              
-              // Delete files subcollection
-              const filesSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'files'));
-              const fBatch = writeBatch(db);
-              filesSnap.docs.forEach(f => fBatch.delete(f.ref));
-              await fBatch.commit();
-
-              await deleteDoc(docSnap.ref);
-              patCount++;
-            }
-          }
-          setTotalPacientes(0);
+          await performWipeOrders();
+          await performWipeVisits();
+          await performWipePatients();
           
           await refreshStats();
           setSuccess(true);
-          setSuccessMsg(`Base de datos clínica vaciada con éxito. Pacientes: ${patCount}, Visitas: ${visCount}, Pedidos: ${ordCount}`);
+          setSuccessMsg(`Base de datos clínica vaciada con éxito.`);
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 8000);
         } catch (err) {
           setError('Error durante la purga clínica.');
-          handleFirestoreError(err, OperationType.DELETE, 'global_purge');
+          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -342,36 +260,12 @@ export default function AdminPanel() {
         setSuccess(false);
         setLoading(true);
         try {
-          const invCount = await performWipeInventory();
-          const ordCount = await performWipeOrders();
-          const visCount = await performWipeVisits();
+          await performWipeInventory();
+          await performWipeOrders();
+          await performWipeVisits();
+          await performWipePatients();
           
-          // Delete patients and their visits & files subcollections
-          let patCount = 0;
-          while (true) {
-            const patSnap = await getDocsFromServer(query(collection(db, 'patients'), limit(100)));
-            if (patSnap.empty) break;
-            for (const docSnap of patSnap.docs) {
-              const visitsSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'visits'));
-              const vBatch = writeBatch(db);
-              visitsSnap.docs.forEach(v => vBatch.delete(v.ref));
-              await vBatch.commit();
-              
-              const filesSnap = await getDocsFromServer(collection(db, 'patients', docSnap.id, 'files'));
-              const fBatch = writeBatch(db);
-              filesSnap.docs.forEach(f => fBatch.delete(f.ref));
-              await fBatch.commit();
-
-              await deleteDoc(docSnap.ref);
-              patCount++;
-            }
-          }
-          setTotalPacientes(0);
-          
-          const uploadsSnap = await getDocsFromServer(collection(db, 'uploads_history'));
-          const uploadBatch = writeBatch(db);
-          uploadsSnap.forEach(d => uploadBatch.delete(d.ref));
-          await uploadBatch.commit();
+          await supabase.from('uploads_history').delete().not('id', 'is', null);
 
           await refreshStats();
           setSuccess(true);
@@ -379,7 +273,7 @@ export default function AdminPanel() {
           setTimeout(() => { setSuccess(false); setSuccessMsg(null); }, 8000);
         } catch (err) {
           setError('Error durante la purga total.');
-          handleFirestoreError(err, OperationType.DELETE, 'system');
+          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -394,22 +288,15 @@ export default function AdminPanel() {
       async () => {
         setLoading(true);
         try {
-          const q = query(collection(db, 'inventory'), where('uploadId', '==', upload.id));
-          const snap = await getDocsFromServer(q);
+          await supabase.from('inventory').delete().eq('uploadId', upload.id);
+          await supabase.from('uploads_history').delete().eq('id', upload.id);
           
-          for (let i = 0; i < snap.docs.length; i += 400) {
-            const batch = writeBatch(db);
-            snap.docs.slice(i, i + 400).forEach(d => batch.delete(d.ref));
-            await batch.commit();
-          }
-          
-          await deleteDoc(doc(db, 'uploads_history', upload.id));
           setSuccess(true);
-          setSuccessMsg(`Carga "${upload.filename}" eliminada con éxito (${snap.size} registros).`);
+          setSuccessMsg(`Carga "${upload.filename}" eliminada con éxito.`);
           await refreshStats();
         } catch (err) {
           setError('Error al eliminar la carga.');
-          handleFirestoreError(err, OperationType.DELETE, 'inventory');
+          console.error(err);
         } finally {
           setLoading(false);
         }
@@ -487,11 +374,10 @@ export default function AdminPanel() {
   const processRows = async (rows: any[][], filename: string) => {
     try {
       console.log('Processing rows from:', filename, 'Total rows:', rows.length);
-      const uploadId = doc(collection(db, 'uploads_history')).id;
-      let currentBatch = writeBatch(db);
+      const uploadId = crypto.randomUUID();
+      let currentBatch: Medicine[] = [];
       let count = 0;
 
-      // Improved header detection
       let startIndex = 0;
       if (rows.length > 0) {
         const firstRowStr = rows[0].map(c => String(c || '').toLowerCase()).join(' ');
@@ -507,10 +393,8 @@ export default function AdminPanel() {
         }
       }
 
-      // Helper to convert Excel date numbers or strings
       const formatVal = (val: any) => {
         if (typeof val === 'number' && val > 30000) {
-          // Likely Excel date
           try {
             const date = new Date((val - 25569) * 86400 * 1000);
             return date.toISOString().split('T')[0];
@@ -524,11 +408,8 @@ export default function AdminPanel() {
       for (let i = startIndex; i < rows.length; i++) {
         const row = rows[i];
         if (!row || row.length < 2) continue;
-
-        // Structure (Columns A to K):
-        // 0: NRO | 1: DROGA | 2: NOMBRE COMERCIAL | 3: PRESENT. | 4: ACC.TERAP. | 5: DOSIS | 6: CANTIDAD | 7: VTO | 8: LABORATORIO | 9: CAJA | 10: TIPO
         
-        let drugId = String(row[0] || '').trim();
+        let drugId = String(row[0] || '').trim().replace(/[^a-zA-Z0-9_ .+()#\-:]/g, '-');
         let drug = String(row[1] || '').trim();
         let brandName = String(row[2] || '').trim();
         let presentation = String(row[3] || '').trim();
@@ -545,8 +426,7 @@ export default function AdminPanel() {
           continue;
         }
 
-        const finalId = drugId || doc(collection(db, 'inventory')).id;
-        const medicineRef = doc(db, 'inventory', finalId);
+        const finalId = drugId || crypto.randomUUID();
         
         const medData: Medicine = {
           drugId: finalId,
@@ -563,19 +443,19 @@ export default function AdminPanel() {
           uploadId
         };
 
-        currentBatch.set(medicineRef, medData);
+        currentBatch.push(medData);
         count++;
 
-        if (count % 400 === 0) {
-          await currentBatch.commit();
-          currentBatch = writeBatch(db);
+        if (currentBatch.length === 400) {
+          await supabase.from('inventory').upsert(currentBatch as any);
+          currentBatch = [];
           console.log(`Commit batch: ${count} items processed.`);
         }
       }
 
       if (count > 0) {
-        if (count % 400 !== 0) {
-          await currentBatch.commit();
+        if (currentBatch.length > 0) {
+          await supabase.from('inventory').upsert(currentBatch as any);
         }
 
         const uploadRecord: UploadRecord = {
@@ -584,7 +464,7 @@ export default function AdminPanel() {
           timestamp: new Date().toISOString(),
           itemCount: count
         };
-        await setDoc(doc(db, 'uploads_history', uploadId), uploadRecord);
+        await supabase.from('uploads_history').insert(uploadRecord as any);
 
         setSuccess(true);
         setSuccessMsg(`¡Carga Exitosa! Se procesaron ${count} medicamentos.`);
@@ -595,7 +475,6 @@ export default function AdminPanel() {
     } catch (err) {
       console.error('Error procesando filas:', err);
       setError('Error interno al guardar los datos. Revisa la consola para más detalles.');
-      handleFirestoreError(err, OperationType.WRITE, 'inventory');
     }
   };
 

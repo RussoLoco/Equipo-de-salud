@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, setDoc, getDoc, addDoc, orderBy, where, limit, deleteDoc, writeBatch, getDocs } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Patient, PatientVisit, Vitals, UserProfile } from '../types';
 import { useAuth } from './AuthProvider';
 import { Search, UserPlus, FileText, ClipboardList, Thermometer, Weight, Ruler, Activity, Check, X, Loader2, User, Calendar, History, ArrowRight, Trash2, Plus } from 'lucide-react';
@@ -68,51 +67,80 @@ export default function Patients() {
     today.setHours(0, 0, 0, 0);
     const timeLimit = today.toISOString();
 
-    const qQueue = query(
-      collection(db, 'visits'),
-      where('status', '==', 'checkin')
-    );
+    let subQueue: any;
+    let subActive: any;
+    let subPatients: any;
 
-    const unsubQueue = onSnapshot(qQueue, (snap) => {
-      const activeCheckins = snap.docs.map(d => d.data() as PatientVisit)
-        .filter(v => v.date >= timeLimit)
-        .sort((a, b) => a.date.localeCompare(b.date));
-      setDailyQueue(activeCheckins);
+    const fetchQueue = async () => {
+      const { data } = await supabase.from('patient_visits').select('*').eq('status', 'checkin');
+      if (data) {
+        const activeCheckins = (data as PatientVisit[])
+          .filter(v => v.date >= timeLimit)
+          .sort((a, b) => a.date.localeCompare(b.date));
+        setDailyQueue(activeCheckins);
+      }
       setLoadingQueue(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits_queue'));
+    };
 
-    // Monitor ALL active visits (not just checkin) to prevent double admission
-    const qActive = query(
-      collection(db, 'visits')
-    );
-    const unsubActive = onSnapshot(qActive, (snap) => {
-      const allActive = snap.docs.map(d => d.data() as PatientVisit)
-        .filter(v => ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'].includes(v.status) && v.date >= timeLimit);
-      setAllActiveVisits(allActive);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'active_visits'));
+    const fetchActive = async () => {
+      const { data } = await supabase.from('patient_visits').select('*');
+      if (data) {
+        const allActive = (data as PatientVisit[])
+          .filter(v => ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'].includes(v.status) && v.date >= timeLimit);
+        setAllActiveVisits(allActive);
+      }
+    };
 
-    const qPatients = query(collection(db, 'patients'), orderBy('name'), limit(100));
-    const unsubPatients = onSnapshot(qPatients, (snap) => {
-      setPatients(snap.docs.map(d => d.data() as Patient));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'patients'));
+    const fetchPatients = async () => {
+      const { data } = await supabase.from('patients').select('*').order('name').limit(100);
+      if (data) {
+        setPatients(data as Patient[]);
+      }
+    };
+
+    fetchQueue();
+    fetchActive();
+    fetchPatients();
+
+    subQueue = supabase.channel('public:patient_visits:queue')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, () => {
+        fetchQueue();
+        fetchActive();
+      }).subscribe();
+
+    subPatients = supabase.channel('public:patients:all')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => fetchPatients())
+      .subscribe();
 
     return () => {
-      unsubQueue();
-      unsubActive();
-      unsubPatients();
+      if (subQueue) supabase.removeChannel(subQueue);
+      if (subPatients) supabase.removeChannel(subPatients);
     };
   }, []);
 
   const fetchHistory = (patientId: string) => {
-    const q = query(
-      collection(db, `patients/${patientId}/visits`), 
-      orderBy('date', 'desc'),
-      limit(50)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setPatientHistory(snap.docs.map(d => d.data() as PatientVisit));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, `patients/${patientId}/visits`));
-    return unsub;
+    let subHistory: any;
+    
+    const fetch = async () => {
+      const { data } = await supabase.from('patient_visits')
+        .select('*')
+        .eq('patientId', patientId)
+        .order('date', { ascending: false })
+        .limit(50);
+      if (data) {
+        setPatientHistory(data as PatientVisit[]);
+      }
+    };
+    
+    fetch();
+
+    subHistory = supabase.channel(`public:patient_visits:${patientId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${patientId}` }, () => fetch())
+      .subscribe();
+
+    return () => {
+      if (subHistory) supabase.removeChannel(subHistory);
+    };
   };
 
   useEffect(() => {
@@ -132,11 +160,11 @@ export default function Patients() {
     try {
       console.log('Starting registration for DNI:', newPatient.dni);
       const patientId = newPatient.dni.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
-      const docRef = doc(db, 'patients', patientId);
-      const docSnap = await getDoc(docRef);
       
-      if (docSnap.exists()) {
-        const existingData = docSnap.data() as Patient;
+      const { data: existingDoc } = await supabase.from('patients').select('*').eq('id', patientId).single();
+      
+      if (existingDoc) {
+        const existingData = existingDoc as Patient;
       const confirmCheckIn = window.confirm(`El paciente "${existingData.name}" ya está registrado con este DNI. ¿Desea iniciar una visita para ${newPatient.serviceType} ahora?`);
       if (confirmCheckIn) {
         setIsRegistering(false);
@@ -160,16 +188,11 @@ export default function Patients() {
         createdAt: new Date().toISOString()
       };
       
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'patients', patientId), patientData);
-      
-      const visitId = doc(collection(db, 'visits')).id;
-      
       // Specialist Direct Routing or Clinical Flow
       const status = newPatient.category === 'Niño' ? 'checkin' : 'espera';
 
       const visitData: PatientVisit = {
-        id: visitId,
+        id: crypto.randomUUID(),
         patientId: patientId,
         patientName: newPatient.name,
         patientDni: newPatient.dni,
@@ -193,11 +216,12 @@ export default function Patients() {
         }
       };
       
-      batch.set(doc(db, 'visits', visitId), visitData);
-      batch.set(doc(db, `patients/${patientId}/visits`, visitId), visitData);
-
-      await batch.commit();
+      const { error: patientError } = await supabase.from('patients').insert(patientData);
+      if (patientError) throw patientError;
       
+      const { error: visitError } = await supabase.from('patient_visits').insert(visitData);
+      if (visitError) throw visitError;
+
       // Toast message removed for iframe compatibility
       setIsRegistering(false);
       setNewPatient({ 
@@ -213,7 +237,7 @@ export default function Patients() {
       });
       setSelectedPatient(patientData);
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `registration/patients/${newPatient.dni}/visits (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -229,27 +253,23 @@ export default function Patients() {
     try {
       const today = new Date();
       today.setHours(today.getHours() - 12);
-      const q = query(
-        collection(db, 'visits'),
-        where('patientId', '==', patient.id)
-      );
-      const snap = await getDocs(q);
-      const activeVisits = snap.docs.map(d => d.data() as PatientVisit).filter(v => 
-        ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista'].includes(v.status) &&
-        v.date >= today.toISOString()
-      );
-      if (activeVisits.length > 0) {
+      
+      const { data: activeVisits } = await supabase.from('patient_visits')
+        .select('*')
+        .eq('patientId', patient.id)
+        .gte('date', today.toISOString())
+        .in('status', ['checkin', 'espera', 'atendiendo', 'atendiendo_nutri', 'atendiendo_especialista']);
+
+      if (activeVisits && activeVisits.length > 0) {
         console.warn('Este paciente ya tiene una consulta en curso hoy.');
         return;
       }
 
-      const visitId = doc(collection(db, 'visits')).id;
-      
       // Specialist Direct Routing or Clinical Flow
       const status = patient.category === 'Niño' ? 'checkin' : 'espera';
 
       const visitData: PatientVisit = {
-        id: visitId,
+        id: crypto.randomUUID(),
         patientId: patient.id,
         patientName: patient.name,
         patientDni: patient.dni,
@@ -273,14 +293,12 @@ export default function Patients() {
         }
       };
 
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'visits', visitId), visitData);
-      batch.set(doc(db, `patients/${patient.id}/visits`, visitId), visitData);
-      await batch.commit();
+      const { error } = await supabase.from('patient_visits').insert(visitData);
+      if (error) throw error;
       
       // Toast message removed for iframe compatibility
     } catch (err) {
-      handleFirestoreError(err, OperationType.CREATE, `checkin/patients/${patient.id}/visits (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -291,20 +309,13 @@ export default function Patients() {
     if (!selectedPatient || !profile) return;
     
     // Si estamos procesando un turno existente de la cola
-    const visitId = selectedVisitForVitals?.id || doc(collection(db, 'visits')).id;
+    const visitId = selectedVisitForVitals?.id || crypto.randomUUID();
     
     setIsSubmitting(true);
     try {
       const isSpecialist = ['ecografía', 'psiquiatría', 'odontología', 'nutrición'].includes(selectedServiceForVitals || '');
       
-      const visitData: PatientVisit = {
-        id: visitId,
-        patientId: selectedPatient.id,
-        patientName: selectedPatient.name,
-        patientDni: selectedPatient.dni,
-        age: selectedPatient.age || '',
-        location: selectedPatient.location || '',
-        category: selectedPatient.category,
+      const visitData = {
         date: new Date().toISOString(), // Actualizar fecha para ir al final de la cola de consulta
         status: 'espera', // Pasa a espera
         serviceType: selectedServiceForVitals,
@@ -316,10 +327,30 @@ export default function Patients() {
         }
       };
 
-      const batch = writeBatch(db);
-      batch.set(doc(db, 'visits', visitId), visitData, { merge: true });
-      batch.set(doc(db, `patients/${selectedPatient.id}/visits`, visitId), visitData, { merge: true });
-      await batch.commit();
+      if (selectedVisitForVitals) {
+        // Update existing visit
+        const { error } = await supabase.from('patient_visits').update(visitData).eq('id', visitId);
+        if (error) throw error;
+      } else {
+        // Insert new visit map
+        const fullVisit: PatientVisit = {
+          id: visitId,
+          patientId: selectedPatient.id,
+          patientName: selectedPatient.name,
+          patientDni: selectedPatient.dni,
+          age: selectedPatient.age || '',
+          location: selectedPatient.location || '',
+          category: selectedPatient.category,
+          status: visitData.status as any,
+          serviceType: visitData.serviceType,
+          date: visitData.date,
+          createdAt: new Date().toISOString(),
+          updatedAt: visitData.updatedAt,
+          vitals: visitData.vitals
+        };
+        const { error } = await supabase.from('patient_visits').insert(fullVisit);
+        if (error) throw error;
+      }
 
       setIsStartingVisit(false);
       setSelectedVisitForVitals(null);
@@ -332,7 +363,7 @@ export default function Patients() {
         recordedBy: ''
       });
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `vitals/patients/${selectedPatient.id}/visits/${visitId} (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -342,14 +373,16 @@ export default function Patients() {
     if (!selectedPatient || !isDoctor) return;
     setIsSubmitting(true);
     try {
-      await setDoc(doc(db, 'patients', selectedPatient.id), {
+      const { error } = await supabase.from('patients').update({
         clinicalHistory: editingHistoryText
-      }, { merge: true });
+      }).eq('id', selectedPatient.id);
+      
+      if (error) throw error;
       
       setSelectedPatient(prev => prev ? { ...prev, clinicalHistory: editingHistoryText } : null);
       setIsEditingHistory(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'patients');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -361,21 +394,9 @@ export default function Patients() {
     setIsSubmitting(true);
     setDeletingPatientId(null);
     try {
-      // 1. Get all visits for the patient from the subcollection
-      const visitsSnap = await getDocs(collection(db, `patients/${patientId}/visits`));
-      const batch = writeBatch(db);
-      
-      // 2. Add subcollection deletions to batch AND corresponding global visits
-      visitsSnap.docs.forEach(v => {
-        batch.delete(v.ref);
-        // Also delete from global visits collection
-        batch.delete(doc(db, 'visits', v.id));
-      });
-      
-      // 3. Add patient deletion to batch
-      batch.delete(doc(db, 'patients', patientId));
-      
-      await batch.commit();
+      // Supabase cascade deletes or we manually do it.
+      await supabase.from('patient_visits').delete().eq('patientId', patientId);
+      await supabase.from('patients').delete().eq('id', patientId);
 
       if (selectedPatient?.id === patientId) {
         setSelectedPatient(null);
@@ -383,7 +404,6 @@ export default function Patients() {
       // Toast message removed for iFrame compatibility
     } catch (err: any) {
       console.error(err);
-      handleFirestoreError(err, OperationType.DELETE, 'patients');
     } finally {
       setIsSubmitting(false);
     }
@@ -739,7 +759,7 @@ export default function Patients() {
                       {isInQueue ? getStatusLabel(activeVisit?.status || '') : 'Nueva Visita (Biometría)'}
                     </button>
                   )}
-                  {isAdmission && !canEditVitals && (
+                  {isAdmission && (
                     <div className="flex flex-col sm:flex-row min-[70.625rem]:flex-col min-[93.75rem]:flex-row gap-2 w-full sm:w-auto min-[70.625rem]:w-full min-[93.75rem]:w-auto">
                       {!isInQueue && (
                         <select 

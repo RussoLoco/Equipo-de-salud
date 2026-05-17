@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, where, orderBy, writeBatch, doc, getDocs, documentId, limit } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Order, Medicine } from '../types';
 import { useAuth } from './AuthProvider';
 import { CheckCircle, Clock, MapPin, User, Pill, ArrowRight, Loader2, ShoppingBag, ClipboardList, History, Check } from 'lucide-react';
@@ -21,57 +20,39 @@ export default function OrdersList() {
 
   useEffect(() => {
     setLoading(true);
-    const ordersCol = collection(db, 'orders');
+    let subPending: any;
     
-    // 1. Real-time Listener ONLY for PENDING orders (The active queue)
-    let pendingQuery;
-    if (isDoctor && !isAdmin) {
-      pendingQuery = query(
-        ordersCol,
-        where('status', '==', 'Pendiente'),
-        where('doctorId', '==', profile?.uid),
-        orderBy('date', 'desc'),
-        limit(50)
-      );
-    } else {
-      pendingQuery = query(
-        ordersCol,
-        where('status', '==', 'Pendiente'),
-        orderBy('date', 'desc'),
-        limit(100)
-      );
-    }
-    
-    const unsubPending = onSnapshot(pendingQuery, (snapshot) => {
-      const docs = snapshot.docs.map(doc => ({ ...doc.data() as Order, orderId: doc.id }));
-      // Extra safety: sort by date locally too
-      setPendingOrders(docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+    // 1. Fetch PENDING orders
+    const fetchPending = async () => {
+      let q = supabase.from('orders').select('*').eq('status', 'Pendiente').order('date', { ascending: false }).limit(isDoctor && !isAdmin ? 50 : 100);
+      if (isDoctor && !isAdmin && profile?.uid) {
+        q = q.eq('doctorId', profile.uid);
+      }
+      const { data } = await q;
+      if (data) {
+        // Extra safety: sort by date locally too
+        setPendingOrders((data as Order[]).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()));
+      }
       setLoading(false);
-    }, (error) => handleFirestoreError(error, OperationType.GET, 'orders_pending'));
+    };
 
-    // 2. One-time fetch for DELIVERED orders (Historical - No real-time needed)
+    fetchPending();
+
+    subPending = supabase.channel('public:orders:pending')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: 'status=eq.Pendiente' }, () => {
+        fetchPending();
+      }).subscribe();
+
+    // 2. Fetch DELIVERED orders (Historical)
     const fetchHistory = async () => {
-      let historyQuery;
-      if (isDoctor && !isAdmin) {
-        historyQuery = query(
-          ordersCol,
-          where('status', '==', 'Entregado'),
-          where('doctorId', '==', profile?.uid),
-          orderBy('date', 'desc'),
-          limit(20)
-        );
-      } else {
-        historyQuery = query(
-          ordersCol,
-          where('status', '==', 'Entregado'),
-          orderBy('date', 'desc'),
-          limit(30)
-        );
+      let historyQuery = supabase.from('orders').select('*').eq('status', 'Entregado').order('date', { ascending: false }).limit(isDoctor && !isAdmin ? 20 : 30);
+      if (isDoctor && !isAdmin && profile?.uid) {
+        historyQuery = historyQuery.eq('doctorId', profile.uid);
       }
       
       try {
-        const snap = await getDocs(historyQuery);
-        setDeliveredOrders(snap.docs.map(doc => ({ ...doc.data() as Order, orderId: doc.id })));
+        const { data } = await historyQuery;
+        if (data) setDeliveredOrders(data as Order[]);
       } catch (err) {
         console.error("Error fetching order history:", err);
       }
@@ -79,51 +60,51 @@ export default function OrdersList() {
 
     fetchHistory();
 
-    return () => unsubPending();
+    return () => {
+      if (subPending) supabase.removeChannel(subPending);
+    };
   }, [isDoctor, isAdmin, profile?.uid]);
 
   const deliverOrder = async (order: Order) => {
     setProcessingId(order.orderId);
     try {
-      const batch = writeBatch(db);
-      
-      const orderRef = doc(db, 'orders', order.orderId);
-      batch.update(orderRef, { 
+      await supabase.from('orders').update({ 
         status: 'Entregado',
         deliveredAt: new Date().toISOString()
-      });
+      }).eq('orderId', order.orderId);
 
       // Optimization: Fetch all necessary drug stocks in ONE query (Avoid N+1)
       const drugIds = order.items.map(item => item.drugId);
-      const drugsSnap = await getDocs(query(collection(db, 'inventory'), where(documentId(), 'in', drugIds)));
-      const drugDataMap = new Map(drugsSnap.docs.map(d => [d.id, { ref: d.ref, ...d.data() }]));
+      const { data: drugsSnap } = await supabase.from('inventory').select('*').in('drugId', drugIds);
+      
+      if (drugsSnap) {
+        const drugDataMap = new Map(drugsSnap.map(d => [d.drugId, d]));
 
-      // Iterate through all items in the prescription
-      for (const item of order.items) {
-        const drugInfo = drugDataMap.get(item.drugId);
-        
-        if (!drugInfo) {
-          console.warn(`Medicine ${item.drugName} no longer exists in inventory.`);
-          continue;
-        }
-
-        const currentStock = String((drugInfo as any).stock || '');
-        const orderQty = String(item.quantity || '');
-
-        const numStock = parseInt(currentStock.replace(/[^0-9]/g, ''));
-        const numQty = parseInt(orderQty.replace(/[^0-9]/g, ''));
-
-        if (!isNaN(numStock) && !isNaN(numQty) && currentStock.match(/^[0-9]+$/) && orderQty.match(/^[0-9]+$/)) {
-          if (numStock < numQty) {
-            throw new Error(`Stock insuficiente para ${item.drugName}. Solicitado: ${item.quantity}, Disponible: ${currentStock}`);
+        // Iterate through all items in the prescription
+        for (const item of order.items) {
+          const drugInfo = drugDataMap.get(item.drugId);
+          
+          if (!drugInfo) {
+            console.warn(`Medicine ${item.drugName} no longer exists in inventory.`);
+            continue;
           }
-          batch.update(drugInfo.ref, { stock: String(numStock - numQty) });
+
+          const currentStock = String((drugInfo as any).stock || '');
+          const orderQty = String(item.quantity || '');
+
+          const numStock = parseInt(currentStock.replace(/[^0-9]/g, ''));
+          const numQty = parseInt(orderQty.replace(/[^0-9]/g, ''));
+
+          if (!isNaN(numStock) && !isNaN(numQty) && currentStock.match(/^[0-9]+$/) && orderQty.match(/^[0-9]+$/)) {
+            if (numStock < numQty) {
+              console.error(`Stock insuficiente para ${item.drugName}. Solicitado: ${item.quantity}, Disponible: ${currentStock}`);
+              continue;
+            }
+            await supabase.from('inventory').update({ stock: String(numStock - numQty) }).eq('drugId', item.drugId);
+          }
         }
       }
-
-      await batch.commit();
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'orders/inventory');
       console.warn('Error: ' + (error instanceof Error ? error.message : 'No se pudo procesar'));
     } finally {
       setProcessingId(null);

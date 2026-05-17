@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, orderBy, limit, getDocs, deleteDoc, doc, writeBatch } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { Order, Patient, Medicine, OrderItem } from '../types';
 import { 
   History, 
@@ -53,134 +52,92 @@ export default function AdminHistory() {
   const [confirmingDeleteAll, setConfirmingDeleteAll] = useState(false);
 
   const deletePatient = async (id: string) => {
-    
     setIsDeleting(true);
     setDeletingPatientId(null);
     try {
-      // 1. Get all visits for the patient from the subcollection
-      const visitsSnap = await getDocs(collection(db, `patients/${id}/visits`));
-      const batch = writeBatch(db);
-      
-      // 2. Add subcollection deletions to batch AND corresponding global visits
-      visitsSnap.docs.forEach(v => {
-        batch.delete(v.ref);
-        // Also delete from global visits collection
-        batch.delete(doc(db, 'visits', v.id));
-      });
-      
-      // 3. Add patient deletion to batch
-      batch.delete(doc(db, 'patients', id));
-      
-      await batch.commit();
-      // Toast message removed for iFrame compatibility
+      await supabase.from('patients').delete().eq('id', id);
     } catch (err: any) {
       console.error(err);
-      handleFirestoreError(err, OperationType.DELETE, `patients/${id}`);
     } finally {
       setIsDeleting(false);
     }
   };
 
   const deleteAllPatients = async () => {
-    
     setIsDeleting(true);
     setConfirmingDeleteAll(false);
     try {
-      // 1. Fetch all patients first so we can delete their subcollections
-      const allPatientsSnap = await getDocs(collection(db, 'patients'));
-      
-      // 2. Wipe global visits collection
-      let visitsCount = 0;
-      while (true) {
-        const snap = await getDocs(query(collection(db, 'visits'), limit(500)));
-        if (snap.empty) break;
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        visitsCount += snap.size;
-      }
-
-      // 3. Wipe all patient subcollections
-      for (const p of allPatientsSnap.docs) {
-        const pVisitsSnap = await getDocs(collection(db, `patients/${p.id}/visits`));
-        if (!pVisitsSnap.empty) {
-          const batch = writeBatch(db);
-          pVisitsSnap.docs.forEach(v => batch.delete(v.ref));
-          await batch.commit();
-        }
-      }
-
-      // 4. Wipe patients collection
-      let patientsCount = 0;
-      while (true) {
-        const snap = await getDocs(query(collection(db, 'patients'), limit(500)));
-        if (snap.empty) break;
-        const batch = writeBatch(db);
-        snap.docs.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        patientsCount += snap.size;
-      }
-      
-      // Toast message removed for iFrame compatibility
+      await supabase.from('patients').delete().not('id', 'is', null);
     } catch (err: any) {
       console.error(err);
-      handleFirestoreError(err, OperationType.DELETE, 'patients_all_wipe');
     } finally {
       setIsDeleting(false);
     }
   };
 
   useEffect(() => {
-    setLoading(true);
-    
-    // 1. Fetch Prescriptions (Orders)
-    const qOrders = query(collection(db, 'orders'), orderBy('date', 'desc'), limit(100));
-    const unsubOrders = onSnapshot(qOrders, (snap) => {
-      const ordersData = snap.docs.map(doc => ({ ...doc.data() as Order, orderId: doc.id }));
-      setPrescriptions(ordersData);
+    let subOrders: any;
+    let subPatients: any;
+    let subFiles: any;
+
+    const fetchData = async () => {
+      setLoading(true);
       
-      // Derived: Stock Out Log (Only from delivered orders)
-      const stockLog = ordersData
-        .filter(o => o.status === 'Entregado')
-        .flatMap(o => o.items.map(item => ({
-          id: `${o.orderId}-${item.drugName}`,
-          drugName: item.drugName,
-          quantity: parseInt(item.quantity.replace(/[^0-9]/g, '')) || 0,
-          patientName: o.patientName || 'Anónimo',
-          doctorName: o.doctorName,
-          date: o.deliveredAt || o.date
-        })));
-      setStockOutLog(stockLog as any);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'orders'));
-
-    // 2. Fetch Patients & their files
-    const qPatients = query(collection(db, 'patients'), orderBy('name', 'asc'), limit(100));
-    const unsubPatients = onSnapshot(qPatients, async (snap) => {
-      const pats = snap.docs.map(d => ({ ...d.data() as Patient, id: d.id }));
-      setPatients(pats);
-
-      // Async fetch all files for these patients directly from source of truth
-      try {
-        const filePromises = pats.map(p => getDocs(collection(db, `patients/${p.id}/files`)));
-        const fileSnaps = await Promise.all(filePromises);
+      // 1. Fetch Prescriptions (Orders)
+      const { data: ordersData } = await supabase.from('orders').select('*').order('date', { ascending: false }).limit(100);
+      if (ordersData) {
+        setPrescriptions(ordersData as Order[]);
         
-        let allFiles: any[] = [];
-        fileSnaps.forEach(s => {
-          allFiles.push(...s.docs.map(d => ({ id: d.id, ...d.data() })));
-        });
-        
-        // Sort by date desc
-        allFiles.sort((a,b) => new Date(b.uploadDate).getTime() - new Date(a.uploadDate).getTime());
-        setFileLogs(allFiles);
-      } catch (err) {
-        console.error("Could not load internal files", err);
+        // Derived: Stock Out Log (Only from delivered orders)
+        const stockLog = ordersData
+          .filter(o => o.status === 'Entregado')
+          .flatMap(o => o.items.map(item => ({
+            id: `${o.orderId}-${item.drugName}`,
+            drugName: item.drugName,
+            quantity: parseInt(item.quantity.replace(/[^0-9]/g, '')) || 0,
+            patientName: o.patientName || 'Anónimo',
+            doctorName: o.doctorName,
+            date: o.deliveredAt || o.date
+          })));
+        setStockOutLog(stockLog as any);
       }
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'patients'));
 
-    setLoading(false);
+      // 2. Fetch Patients
+      const { data: pats } = await supabase.from('patients').select('*').order('name', { ascending: true }).limit(100);
+      if (pats) {
+        setPatients(pats as Patient[]);
+      }
+
+      // 3. Fetch Files
+      const { data: allFiles } = await supabase.from('patient_files').select('*').order('uploadDate', { ascending: false });
+      if (allFiles) {
+        setFileLogs(allFiles as any[]);
+      }
+
+      setLoading(false);
+    };
+
+    fetchData();
+
+    subOrders = supabase.channel('public:orders:admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        fetchData();
+      }).subscribe();
+      
+    subPatients = supabase.channel('public:patients:admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patients' }, () => {
+        fetchData();
+      }).subscribe();
+      
+    subFiles = supabase.channel('public:patient_files:admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_files' }, () => {
+        fetchData();
+      }).subscribe();
+
     return () => {
-      unsubOrders();
-      unsubPatients();
+      if (subOrders) supabase.removeChannel(subOrders);
+      if (subPatients) supabase.removeChannel(subPatients);
+      if (subFiles) supabase.removeChannel(subFiles);
     };
   }, []);
 
@@ -494,6 +451,7 @@ export default function AdminHistory() {
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Archivo</th>
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Peso / Disp.</th>
                     <th className="px-8 py-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Profesional</th>
+                    <th className="px-8 py-4 w-16"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -519,6 +477,23 @@ export default function AdminHistory() {
                              </div>
                              <span className="text-[10px] font-bold text-slate-500">{log.uploaderName}</span>
                           </div>
+                        </td>
+                        <td className="px-8 py-5">
+                          <button 
+                            onClick={async () => {
+                              if (window.confirm(`¿Seguro que deseas eliminar permanentemente el archivo "${log.fileName}"?`)) {
+                                try {
+                                  await supabase.from('patient_files').delete().eq('id', log.id);
+                                } catch (err) {
+                                  console.error(err);
+                                }
+                              }
+                            }}
+                            className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                            title="Eliminar Archivo"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
                         </td>
                       </tr>
                     );

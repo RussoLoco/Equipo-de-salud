@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, addDoc, serverTimestamp, orderBy, deleteDoc, doc } from 'firebase/firestore';
-import { db, auth, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthProvider';
 import { PatientFile } from '../types';
-import { FileUp, File, Loader2, Trash2, ExternalLink, Image as ImageIcon, Download } from 'lucide-react';
+import { FileUp, File, Loader2, Trash2, ExternalLink, Image as ImageIcon, Download, X } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -18,17 +17,27 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [fileToDelete, setFileToDelete] = useState<PatientFile | null>(null);
 
+  const [fileToPreview, setFileToPreview] = useState<PatientFile | null>(null);
+
   useEffect(() => {
     if (!patientId) return;
-    const q = query(
-      collection(db, `patients/${patientId}/files`),
-      orderBy('uploadDate', 'desc')
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      setFiles(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as PatientFile)));
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'files'));
+    let sub: any;
 
-    return () => unsub();
+    const fetchFiles = async () => {
+      const { data } = await supabase.from('patient_files').select('*').eq('patientId', patientId).order('uploadDate', { ascending: false });
+      if (data) setFiles(data as PatientFile[]);
+    };
+
+    fetchFiles();
+
+    sub = supabase.channel(`public:patient_files:${patientId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_files', filter: `patientId=eq.${patientId}` }, () => {
+        fetchFiles();
+      }).subscribe();
+
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, [patientId]);
 
   const canUpload = profile && ['doctor', 'ecografista', 'psiquiatra', 'odontologo', 'nutritionist', 'admin'].includes(profile.role);
@@ -37,9 +46,7 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
     const file = e.target.files?.[0];
     if (!file || !profile) return;
 
-    // Reset input
     e.target.value = '';
-
     setIsUploading(true);
 
     try {
@@ -53,7 +60,7 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
           img.onload = () => {
             const canvas = document.createElement('canvas');
             let { width, height } = img;
-            const maxDim = 1200; // max width/height
+            const maxDim = 1200;
 
             if (width > maxDim || height > maxDim) {
               if (width > height) {
@@ -73,16 +80,14 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
               return;
             }
             ctx.drawImage(img, 0, 0, width, height);
-            resolve(canvas.toDataURL('image/jpeg', 0.6)); // 60% quality jpeg
+            resolve(canvas.toDataURL('image/jpeg', 0.6));
           };
           img.onerror = reject;
           img.src = URL.createObjectURL(file);
         });
         
-        // Estimate base64 size: roughly length * 0.75
         finalSize = Math.round(base64data.length * 0.75);
       } else {
-        // For PDFs or other files, just convert to base64
         base64data = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onloadend = () => resolve(reader.result as string);
@@ -92,7 +97,6 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
         finalSize = Math.round(base64data.length * 0.75);
       }
 
-      // Check size limit (approx 800KB for Firestore)
       if (finalSize > 800 * 1024) {
         alert(file.type.startsWith('image/') 
           ? "Incluso con la reducción, la imagen sigue siendo muy grande. Intenta con una imagen de menor resolución."
@@ -101,19 +105,21 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
         return;
       }
 
-      const fileData: Omit<PatientFile, 'id'> = {
+      const newFileId = crypto.randomUUID();
+      const fileData: PatientFile = {
+        id: newFileId,
         patientId,
         fileName: file.name,
         fileType: file.type.startsWith('image/') ? 'image/jpeg' : file.type,
         fileUrl: base64data,
         uploadedBy: profile.uid,
         uploaderName: profile.name,
-        uploaderRole: profile.role,
+        uploaderRole: profile.role || '',
         uploadDate: new Date().toISOString(),
         size: finalSize
       };
 
-      await addDoc(collection(db, `patients/${patientId}/files`), fileData);
+      await supabase.from('patient_files').insert(fileData as any);
 
     } catch (err) {
       console.error("Error uploading/compressing file:", err);
@@ -127,10 +133,9 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
     if (!profile || profile.role !== 'admin' || !fileToDelete) return;
 
     try {
-      // Delete doc
-      await deleteDoc(doc(db, `patients/${patientId}/files`, fileToDelete.id));
+      await supabase.from('patient_files').delete().eq('id', fileToDelete.id);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, `files`);
+      console.error(err);
     } finally {
       setFileToDelete(null);
     }
@@ -141,30 +146,7 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
   };
 
   const handleOpenDoc = (file: PatientFile) => {
-    try {
-      const arr = file.fileUrl.split(',');
-      const mimeMatch = arr[0].match(/:(.*?);/);
-      if (!mimeMatch) return;
-      const mimeType = mimeMatch[1];
-      const bstr = atob(arr[1]);
-      let n = bstr.length;
-      const u8arr = new Uint8Array(n);
-      while (n--) {
-        u8arr[n] = bstr.charCodeAt(n);
-      }
-      const blob = new Blob([u8arr], { type: mimeType });
-      const blobUrl = URL.createObjectURL(blob);
-      window.open(blobUrl, '_blank');
-      // Release URL later to allow download to start
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-    } catch (err) {
-      console.error("Error opening file:", err);
-      // Fallback if decode fails
-      const w = window.open();
-      if (w) {
-        w.document.write(`<iframe src="${file.fileUrl}" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>`);
-      }
-    }
+    setFileToPreview(file);
   };
 
   const handleDownload = (file: PatientFile) => {
@@ -294,6 +276,39 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
           <ImageIcon className="h-8 w-8 text-slate-300 mb-3" />
           <p className="text-sm font-bold text-slate-500">No hay archivos adjuntos</p>
           <p className="text-xs text-slate-400 mt-1">Aquí puedes guardar fotos, análisis o estudios en PDF del paciente.</p>
+        </div>
+      )}
+
+      {/* File Preview Modal */}
+      {fileToPreview && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-900/90 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-5xl h-full max-h-[90vh] bg-slate-900 rounded-[2rem] shadow-2xl flex flex-col overflow-hidden relative border border-slate-700">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-black/20">
+              <h3 className="text-white font-bold text-sm truncate flex-1 pr-4">{fileToPreview.fileName}</h3>
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => handleDownload(fileToPreview)}
+                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors flex items-center gap-2"
+                >
+                  <Download className="h-3 w-3" />
+                  Descargar
+                </button>
+                <button 
+                  onClick={() => setFileToPreview(null)}
+                  className="p-2 bg-white/10 hover:bg-white/20 text-white rounded-xl transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-auto bg-black/40 flex items-center justify-center p-4">
+              {fileToPreview.fileType.startsWith('image/') ? (
+                <img src={fileToPreview.fileUrl} alt={fileToPreview.fileName} className="max-w-full max-h-full object-contain rounded-xl" />
+              ) : (
+                <iframe src={fileToPreview.fileUrl} title={fileToPreview.fileName} className="w-full h-full bg-white rounded-xl border-none" />
+              )}
+            </div>
+          </div>
         </div>
       )}
 

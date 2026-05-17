@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, onSnapshot, doc, updateDoc, where, getDoc, writeBatch, limit, orderBy } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { supabase } from '../lib/supabase';
 import { PatientVisit, MedicalEvolution } from '../types';
 import { useAuth } from './AuthProvider';
 import { User, Activity, Weight, Ruler, Thermometer, Clock, ArrowRight, ClipboardList, BookOpen, ScrollText, Check, Loader2, History, X, ChevronDown, ChevronUp, Calendar } from 'lucide-react';
@@ -52,19 +51,32 @@ export default function NutritionistConsultation() {
     today.setHours(0, 0, 0, 0);
     const timeLimit = today.toISOString();
 
-    const q = query(
-      collection(db, 'visits'), 
-      where('status', 'in', ['espera', 'atendiendo_nutri'])
-    );
-    
-    const unsub = onSnapshot(q, (snap) => {
-      const docs = snap.docs.map(d => d.data() as PatientVisit)
-        .filter(v => v.date >= timeLimit && v.serviceType === 'nutrición');
-      const sorted = docs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setPendingVisits(sorted);
+    let sub: any;
+
+    const fetchVisits = async () => {
+      const { data } = await supabase.from('patient_visits')
+        .select('*')
+        .in('status', ['espera', 'atendiendo_nutri'])
+        .eq('serviceType', 'nutrición')
+        .gte('date', timeLimit);
+
+      if (data) {
+        const sorted = (data as PatientVisit[]).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        setPendingVisits(sorted);
+      }
       setLoading(false);
-    }, (err) => handleFirestoreError(err, OperationType.LIST, 'visits'));
-    return () => unsub();
+    }
+
+    fetchVisits();
+
+    sub = supabase.channel('public:patient_visits:nutritionist')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits' }, () => {
+        fetchVisits();
+      }).subscribe();
+
+    return () => {
+      if (sub) supabase.removeChannel(sub);
+    };
   }, []);
 
   const claimVisit = async (visit: PatientVisit) => {
@@ -88,6 +100,17 @@ export default function NutritionistConsultation() {
 
     setIsSubmitting(true);
     try {
+      const { data, error } = await supabase.from('patient_visits').select('*').eq('id', visit.id).single();
+      if (error) throw error;
+      
+      const currentData = data as PatientVisit;
+      if (currentData.status === 'atendiendo_nutri' && currentData.attendingDoctorId !== profile.uid) {
+        throw new Error(`Esta consulta ya está siendo atendida por ${currentData.attendingDoctorName || 'otro profesional'}.`);
+      }
+      if (currentData.status === 'atendiendo') {
+        throw new Error(`Esta consulta ya está siendo atendida por el Médico.`);
+      }
+
       const visitUpdate = {
         status: 'atendiendo_nutri',
         attendingDoctorId: profile.uid,
@@ -95,14 +118,12 @@ export default function NutritionistConsultation() {
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', visit.id), visitUpdate);
-      batch.update(doc(db, `patients/${visit.patientId}/visits`, visit.id), visitUpdate);
+      const { error: updateError } = await supabase.from('patient_visits').update(visitUpdate).eq('id', visit.id);
+      if (updateError) throw updateError;
 
-      await batch.commit();
       setSelectedVisit({ ...visit, ...visitUpdate } as PatientVisit);
-    } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `claim/patients/${visit.patientId}/visits/${visit.id} (and root)`);
+    } catch (err: any) {
+      console.warn(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -128,16 +149,13 @@ export default function NutritionistConsultation() {
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
-      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
+      await supabase.from('patient_visits').update(visitUpdate).eq('id', selectedVisit.id);
 
-      await batch.commit();
       setSelectedVisit(null);
       setRecommendations('');
       setNutritionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `release/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -145,40 +163,52 @@ export default function NutritionistConsultation() {
 
   useEffect(() => {
     if (selectedVisit) {
-      getDoc(doc(db, 'patients', selectedVisit.patientId)).then(snap => {
-        if (snap.exists()) {
-          setPermanentHistory(snap.data().clinicalHistory || '');
+      supabase.from('patients').select('*').eq('id', selectedVisit.patientId).single().then(({ data }) => {
+        if (data) {
+          setPermanentHistory(data.clinicalHistory || '');
         }
       });
-
-      const q = query(
-        collection(db, `patients/${selectedVisit.patientId}/visits`),
-        orderBy('date', 'desc'),
-        limit(50)
-      );
       
-      const unsubscribe = onSnapshot(q, (snap) => {
-        setPatientHistory(snap.docs.map(d => d.data() as PatientVisit).filter(v => v.id !== selectedVisit.id));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, `patients/${selectedVisit.patientId}/visits`));
+      const fetchHistory = async () => {
+        const { data } = await supabase.from('patient_visits')
+          .select('*')
+          .eq('patientId', selectedVisit.patientId)
+          .order('date', { ascending: false })
+          .limit(50);
+        
+        if (data) {
+          setPatientHistory((data as PatientVisit[]).filter(v => v.id !== selectedVisit.id));
+        }
+      };
 
-      return () => unsubscribe();
-    } else {
-      setPatientHistory([]);
-      setShowFullHistory(false);
+      fetchHistory();
+
+      let sub = supabase.channel(`public:patient_visits:${selectedVisit.patientId}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${selectedVisit.patientId}` }, () => fetchHistory())
+        .subscribe();
+
+      return () => {
+         if (sub) supabase.removeChannel(sub);
+      };
     }
   }, [selectedVisit]);
   
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     if (peekingPatient) {
-      const q = query(
-        collection(db, `patients/${peekingPatient.id}/visits`),
-        orderBy('date', 'desc'),
-        limit(20)
-      );
-      unsubscribe = onSnapshot(q, (snap) => {
-        setPeekingHistory(snap.docs.map(d => d.data() as PatientVisit).filter(v => v.status === 'atendido'));
-      }, (err) => handleFirestoreError(err, OperationType.LIST, `peeking/${peekingPatient.id}/visits`));
+      const fetchPeeking = async () => {
+        const { data } = await supabase.from('patient_visits')
+          .select('*')
+          .eq('patientId', peekingPatient.id)
+          .order('date', { ascending: false })
+          .limit(20);
+        
+        if (data) {
+          setPeekingHistory((data as PatientVisit[]).filter(v => v.status === 'atendido'));
+        }
+      };
+
+      fetchPeeking();
     } else {
       setPeekingHistory([]);
     }
@@ -189,12 +219,12 @@ export default function NutritionistConsultation() {
     if (!selectedVisit) return;
     setIsSubmitting(true);
     try {
-      await updateDoc(doc(db, 'patients', selectedVisit.patientId), {
+      await supabase.from('patients').update({
         clinicalHistory: permanentHistory
-      });
+      }).eq('id', selectedVisit.patientId);
       setIsEditingPermanent(false);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, 'patients');
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
@@ -221,21 +251,17 @@ export default function NutritionistConsultation() {
 
       const visitUpdate = {
         status: 'atendido', // Marcar como atendido finaliza el ciclo
-        evolution,
+        evolution: evolution as any,
         updatedAt: new Date().toISOString()
       };
 
-      const batch = writeBatch(db);
-      batch.update(doc(db, 'visits', selectedVisit.id), visitUpdate);
-      batch.update(doc(db, `patients/${selectedVisit.patientId}/visits`, selectedVisit.id), visitUpdate);
-
-      await batch.commit();
+      await supabase.from('patient_visits').update(visitUpdate).eq('id', selectedVisit.id);
       
       setSelectedVisit(null);
       setRecommendations('');
       setNutritionNotes('');
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, `complete/patients/${selectedVisit.patientId}/visits/${selectedVisit.id} (and root)`);
+      console.error(err);
     } finally {
       setIsSubmitting(false);
     }
