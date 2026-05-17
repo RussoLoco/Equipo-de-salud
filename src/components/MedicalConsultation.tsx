@@ -243,7 +243,7 @@ export default function MedicalConsultation() {
 
       fetchHistory();
 
-      subHistory = supabase.channel(`public:patient_visits:${selectedVisit.patientId}`)
+      subHistory = supabase.channel(`public:patient_visits:${selectedVisit.patientId}-${crypto.randomUUID()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${selectedVisit.patientId}` }, () => fetchHistory())
         .subscribe();
 

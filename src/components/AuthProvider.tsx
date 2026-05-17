@@ -110,8 +110,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.error("Error in user change:", error);
         }
 
+        if (subscription) {
+          supabase.removeChannel(subscription);
+        }
         subscription = supabase
-          .channel(`user-profile-${currentUser.id}`)
+          .channel(`user-profile-${currentUser.id}-${crypto.randomUUID()}`)
           .on(
             "postgres_changes",
             {

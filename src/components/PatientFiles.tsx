@@ -30,7 +30,7 @@ export default function PatientFiles({ patientId }: PatientFilesProps) {
 
     fetchFiles();
 
-    sub = supabase.channel(`public:patient_files:${patientId}`)
+    sub = supabase.channel(`public:patient_files:${patientId}-${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_files', filter: `patientId=eq.${patientId}` }, () => {
         fetchFiles();
       }).subscribe();

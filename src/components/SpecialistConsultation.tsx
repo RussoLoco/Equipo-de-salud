@@ -218,7 +218,7 @@ export default function SpecialistConsultation({ forcedRole }: SpecialistConsult
 
       fetchHistory();
 
-      let sub = supabase.channel(`public:patient_visits:${selectedVisit.patientId}`)
+      let sub = supabase.channel(`public:patient_visits:${selectedVisit.patientId}-${crypto.randomUUID()}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${selectedVisit.patientId}` }, () => fetchHistory())
         .subscribe();
 

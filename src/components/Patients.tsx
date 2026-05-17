@@ -134,7 +134,7 @@ export default function Patients() {
     
     fetch();
 
-    subHistory = supabase.channel(`public:patient_visits:${patientId}`)
+    subHistory = supabase.channel(`public:patient_visits:${patientId}-${crypto.randomUUID()}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'patient_visits', filter: `patientId=eq.${patientId}` }, () => fetch())
       .subscribe();
 
