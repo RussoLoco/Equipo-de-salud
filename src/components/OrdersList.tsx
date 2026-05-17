@@ -75,7 +75,7 @@ export default function OrdersList() {
 
       // Optimization: Fetch all necessary drug stocks in ONE query (Avoid N+1)
       const drugIds = order.items.map(item => item.drugId);
-      const { data: drugsSnap } = await supabase.from('inventory').select('*').in('drugId', drugIds);
+      const { data: drugsSnap } = await supabase.from('medicines').select('*').in('drugId', drugIds);
       
       if (drugsSnap) {
         const drugDataMap = new Map(drugsSnap.map(d => [d.drugId, d]));
@@ -85,7 +85,7 @@ export default function OrdersList() {
           const drugInfo = drugDataMap.get(item.drugId);
           
           if (!drugInfo) {
-            console.warn(`Medicine ${item.drugName} no longer exists in inventory.`);
+            console.warn(`Medicine ${item.drugName} no longer exists in medicines.`);
             continue;
           }
 
@@ -100,7 +100,7 @@ export default function OrdersList() {
               console.error(`Stock insuficiente para ${item.drugName}. Solicitado: ${item.quantity}, Disponible: ${currentStock}`);
               continue;
             }
-            await supabase.from('inventory').update({ stock: String(numStock - numQty) }).eq('drugId', item.drugId);
+            await supabase.from('medicines').update({ stock: String(numStock - numQty) }).eq('drugId', item.drugId);
           }
         }
       }

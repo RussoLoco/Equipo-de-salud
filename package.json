@@ -28,7 +28,6 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
-    "@firebase/eslint-plugin-security-rules": "^0.0.2",
     "@types/node": "^22.14.0",
     "autoprefixer": "^10.4.21",
     "eslint": "^10.3.0",

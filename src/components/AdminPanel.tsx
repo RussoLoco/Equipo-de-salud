@@ -23,7 +23,7 @@ export default function AdminPanel() {
 
   const fetchHistory = async () => {
     try {
-      const { data } = await supabase.from('uploads_history').select('*').order('timestamp', { ascending: false }).limit(50);
+      const { data } = await supabase.from('upload_records').select('*').order('timestamp', { ascending: false }).limit(50);
       if (data) setUploadHistory(data as UploadRecord[]);
     } catch (e) {
       console.error('Error fetching history', e);
@@ -34,7 +34,7 @@ export default function AdminPanel() {
     setLoading(true);
     try {
       const [{ count: invCount }, { count: ordCount }, { count: patCount }] = await Promise.all([
-        supabase.from('inventory').select('*', { count: 'exact', head: true }),
+        supabase.from('medicines').select('*', { count: 'exact', head: true }),
         supabase.from('orders').select('*', { count: 'exact', head: true }),
         supabase.from('patients').select('*', { count: 'exact', head: true })
       ]);
@@ -98,7 +98,7 @@ export default function AdminPanel() {
     setIsWiping(true);
     try {
       console.log('--- WIPE INVENTORY START ---');
-      await supabase.from('inventory').delete().not('drugId', 'is', null);
+      await supabase.from('medicines').delete().not('drugId', 'is', null);
       setTotalInventario(0); // Optimistic clear
       return true;
     } catch (err) {
@@ -265,7 +265,7 @@ export default function AdminPanel() {
           await performWipeVisits();
           await performWipePatients();
           
-          await supabase.from('uploads_history').delete().not('id', 'is', null);
+          await supabase.from('upload_records').delete().not('id', 'is', null);
 
           await refreshStats();
           setSuccess(true);
@@ -288,8 +288,8 @@ export default function AdminPanel() {
       async () => {
         setLoading(true);
         try {
-          await supabase.from('inventory').delete().eq('uploadId', upload.id);
-          await supabase.from('uploads_history').delete().eq('id', upload.id);
+          await supabase.from('medicines').delete().eq('uploadId', upload.id);
+          await supabase.from('upload_records').delete().eq('id', upload.id);
           
           setSuccess(true);
           setSuccessMsg(`Carga "${upload.filename}" eliminada con éxito.`);
@@ -409,24 +409,23 @@ export default function AdminPanel() {
         const row = rows[i];
         if (!row || row.length < 2) continue;
         
-        let drugId = String(row[0] || '').trim().replace(/[^a-zA-Z0-9_ .+()#\-:]/g, '-');
-        let drug = String(row[1] || '').trim();
-        let brandName = String(row[2] || '').trim();
-        let presentation = String(row[3] || '').trim();
-        let therapeuticAction = String(row[4] || '').trim();
-        let dosage = String(row[5] || '').trim();
-        let stock = String(row[6] || '').trim(); 
-        let expirationDate = formatVal(row[7]);
-        let laboratory = String(row[8] || '').trim();
-        let location = String(row[9] || '').trim();
-        let categoryRaw = String(row[10] || '').toLowerCase();
+        let drug = String(row[0] || '').trim();
+        let brandName = String(row[1] || '').trim();
+        let presentation = String(row[2] || '').trim();
+        let therapeuticAction = String(row[3] || '').trim();
+        let dosage = String(row[4] || '').trim();
+        let stock = String(row[5] || '').trim(); 
+        let expirationDate = formatVal(row[6]);
+        let laboratory = String(row[7] || '').trim();
+        let location = String(row[8] || '').trim();
+        let categoryRaw = String(row[9] || '').toLowerCase();
 
         if (!drug && !brandName) {
           console.log(`Fila ${i} saltada: sin droga ni nombre comercial.`);
           continue;
         }
 
-        const finalId = drugId || crypto.randomUUID();
+        const finalId = crypto.randomUUID();
         
         const medData: Medicine = {
           drugId: finalId,
@@ -447,7 +446,8 @@ export default function AdminPanel() {
         count++;
 
         if (currentBatch.length === 400) {
-          await supabase.from('inventory').upsert(currentBatch as any);
+          const { error: batchError } = await supabase.from('medicines').insert(currentBatch as any);
+          if (batchError) throw batchError;
           currentBatch = [];
           console.log(`Commit batch: ${count} items processed.`);
         }
@@ -455,7 +455,8 @@ export default function AdminPanel() {
 
       if (count > 0) {
         if (currentBatch.length > 0) {
-          await supabase.from('inventory').upsert(currentBatch as any);
+          const { error: finalBatchError } = await supabase.from('medicines').insert(currentBatch as any);
+          if (finalBatchError) throw finalBatchError;
         }
 
         const uploadRecord: UploadRecord = {
@@ -464,7 +465,8 @@ export default function AdminPanel() {
           timestamp: new Date().toISOString(),
           itemCount: count
         };
-        await supabase.from('uploads_history').insert(uploadRecord as any);
+        const { error: historyError } = await supabase.from('upload_records').insert(uploadRecord as any);
+        if (historyError) throw historyError;
 
         setSuccess(true);
         setSuccessMsg(`¡Carga Exitosa! Se procesaron ${count} medicamentos.`);
@@ -472,9 +474,10 @@ export default function AdminPanel() {
       } else {
         setError('No se encontraron datos válidos. Verifica el orden de las columnas.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error procesando filas:', err);
-      setError('Error interno al guardar los datos. Revisa la consola para más detalles.');
+      let errMsg = err?.message || JSON.stringify(err);
+      setError('Error interno al guardar los datos: ' + errMsg);
     }
   };
 
@@ -810,14 +813,14 @@ export default function AdminPanel() {
                       <span className="text-[10px] font-bold text-blue-600">Tip</span>
                     </div>
                     <div className="space-y-1">
-                      <h4 className="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Columnas Requeridas (A-K)</h4>
+                      <h4 className="text-[10px] font-bold text-slate-800 uppercase tracking-widest">Columnas Requeridas (A-J)</h4>
                       <p className="text-[11px] text-slate-500 font-mono leading-relaxed">
-                        NRO | DROGA | COMERCIAL | PRESENT | ACCIÓN | DOSIS | CANT | VTO | LAB | CAJA | TIPO
+                        DROGA | COMERCIAL | PRESENT | ACCIÓN | DOSIS | CANT | VTO | LAB | CAJA | TIPO
                       </p>
                     </div>
                 </div>
                 <div className="p-6 bg-slate-50 rounded-2xl border border-slate-100 italic flex items-center justify-center text-[11px] text-slate-400 leading-relaxed text-center">
-                    "Recuerda que si el ID existe en el sistema, los datos se actualizarán. Si no existe, se creará un nuevo registro."
+                    "Los registros de la carga masiva se crearán automáticamente con nuevos Identificadores en la base de datos de manera incremental."
                 </div>
             </div>
 

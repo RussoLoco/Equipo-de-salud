@@ -85,7 +85,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     let sub: any;
 
     const fetchInventory = async () => {
-      const { data } = await supabase.from('inventory').select('*').order('drug', { ascending: true });
+      const { data } = await supabase.from('medicines').select('*').order('drug', { ascending: true });
       if (data) {
         setMedicines(data as Medicine[]);
       }
@@ -94,8 +94,8 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
 
     fetchInventory();
 
-    sub = supabase.channel('public:inventory')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory' }, () => {
+    sub = supabase.channel('public:medicines')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'medicines' }, () => {
         fetchInventory();
       }).subscribe();
 
@@ -163,9 +163,9 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
       };
       
       if (isAddingNew) {
-        await supabase.from('inventory').insert(updateData as any);
+        await supabase.from('medicines').insert(updateData as any);
       } else {
-        await supabase.from('inventory').update(updateData as any).eq('drugId', drugId);
+        await supabase.from('medicines').update(updateData as any).eq('drugId', drugId);
       }
       
       setIsEditModalOpen(false);
@@ -277,7 +277,7 @@ export default function Inventory({ externalCart, setExternalCart, isSelectionMo
     if (!medToDelete) return;
     setIsSubmitting(true);
     try {
-      await supabase.from('inventory').delete().eq('drugId', medToDelete);
+      await supabase.from('medicines').delete().eq('drugId', medToDelete);
       setIsDeleteModalOpen(false);
       setMedToDelete(null);
     } catch (err) {

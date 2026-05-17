@@ -118,16 +118,23 @@ ALTER TABLE public.patient_visits ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.upload_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orders ENABLE ROW LEVEL SECURITY;
 
--- Permitir todo a roles autenticados (Emulando tus viejas reglas de Firestore para hacer la app funcionar)
-CREATE POLICY "Permitir todo en users" ON public.users FOR ALL TO authenticated USING (true);
-CREATE POLICY "Permitir todo en medicines" ON public.medicines FOR ALL TO authenticated USING (true);
-CREATE POLICY "Permitir todo en patients" ON public.patients FOR ALL TO authenticated USING (true);
-CREATE POLICY "Permitir todo en patient_files" ON public.patient_files FOR ALL TO authenticated USING (true);
-CREATE POLICY "Permitir todo en patient_visits" ON public.patient_visits FOR ALL TO authenticated USING (true);
-CREATE POLICY "Permitir todo en upload_records" ON public.upload_records FOR ALL TO authenticated USING (true);
-CREATE POLICY "Permitir todo en orders" ON public.orders FOR ALL TO authenticated USING (true);
+-- Drops existing policies to avoid errors on multiple runs
+DROP POLICY IF EXISTS "Permitir todo en users" ON public.users;
+DROP POLICY IF EXISTS "Permitir todo en medicines" ON public.medicines;
+DROP POLICY IF EXISTS "Permitir todo en patients" ON public.patients;
+DROP POLICY IF EXISTS "Permitir todo en patient_files" ON public.patient_files;
+DROP POLICY IF EXISTS "Permitir todo en patient_visits" ON public.patient_visits;
+DROP POLICY IF EXISTS "Permitir todo en upload_records" ON public.upload_records;
+DROP POLICY IF EXISTS "Permitir todo en orders" ON public.orders;
 
--- Habilitar actualizaciones en tiempo real (para web sockets)
-alter publication supabase_realtime add table public.users;
-alter publication supabase_realtime add table public.patient_visits;
-alter publication supabase_realtime add table public.orders;
+-- Permitir todo a cualquier rol (público) - Temporalmente para facilitar el alta
+CREATE POLICY "Permitir todo en users" ON public.users FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo en medicines" ON public.medicines FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo en patients" ON public.patients FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo en patient_files" ON public.patient_files FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo en patient_visits" ON public.patient_visits FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo en upload_records" ON public.upload_records FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Permitir todo en orders" ON public.orders FOR ALL USING (true) WITH CHECK (true);
+
+-- Nota: Si necesitas habilitar supabase_realtime, hazlo desde la interfaz gráfica o corre esto solo 1 vez:
+-- alter publication supabase_realtime add table public.users, public.patient_visits, public.orders;
